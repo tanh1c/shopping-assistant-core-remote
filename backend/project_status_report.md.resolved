@@ -1,0 +1,148 @@
+# Báo Cáo Tiến Độ Dự Án: Shopping Monitor cho Người Khiếm Thị
+
+**Ngày báo cáo:** 07/03/2026
+**Tài liệu dành cho:** Team phát triển (Đặc biệt là phân hệ AI/Computer Vision)
+
+---
+
+## 1. Tổng quan Dự án & Thay đổi Định hướng Công nghệ
+
+Dự án đã hoàn thiện 100% phần giao diện web (Dashboard) và hệ thống máy chủ API.
+Trong quá trình phát triển, để tăng tính chuyên nghiệp, dễ mở rộng và nâng cao trải nghiệm người dùng, team Web đã quyết định **thay đổi Tech Stack** so với bản kế hoạch (HTMX) ban đầu sang một hệ thống mạnh mẽ và hiện đại hơn:
+
+*   **Backend Framework:** FastAPI + Python + SQLite (Giữ nguyên - Rất nhanh và thân thiện với hệ sinh thái AI).
+*   **Frontend Framework:** ⚛️ React (Vite) + TypeScript (Thay thế cho cấu trúc HTML thuần).
+*   **UI/UX Design:** Tailwind CSS v4 + `shadcn/ui` + Recharts (Cung cấp giao diện hiện đại, Dark/Light Mode, thân thiện thiết bị di động và biểu đồ tương tác).
+
+---
+
+## 2. Tiến Độ Hoàn Thiện Các Tính Năng
+
+### 🖥️ Mảng Frontend (Web UI)
+*   **Poling Dữ Liệu Tự Động**: Tích hợp cơ chế tự động làm mới giao diện (Auto-polling) với các tùy chọn (5s, 30s, Tắt) giúp hiển thị dữ liệu từ AI theo thời gian thực.
+*   **Responsive Control (Mobile-First)**: Giao diện hiển thị tự động thích ứng hoàn hảo từ Desktop đến Mobile (Ví dụ: Chuyển bảng dữ liệu lớn thành Card-list gọn gàng trên màn hình điện thoại).
+*   **Analytics Charts**: Tích hợp các biểu đồ trực quan như Pie Chart (Phân bổ nhóm thực phẩm) và Bar Chart (Thống kê độ tin cậy AI).
+*   **Quản trị Dữ liệu (CRUD)**: Đã tích hợp Form Thêm/Sửa/Xóa dữ liệu thủ công ngay trên giao diện Lịch sử để team phát triển dễ dàng tạo mock data và kiểm thử.
+*   **Hệ thống Cảnh báo Thông minh**: Tự động hiển thị banner đỏ và danh sách cảnh báo sát thời gian thực ở trang Dashboard nếu phát hiện có sản phẩm lỗi, hết hạn.
+
+### ⚙️ Mảng Backend (API Server & Logic)
+*   **Cơ sở dữ liệu độc lập**: Đã thiết lập SQLite lưu trữ toàn bộ lịch sử quét, cấu trúc hóa dữ liệu.
+*   **Auto-Warning Detection**: Backend tự động phân tích dữ liệu AI gửi lên. Nếu `expiry_date` < ngày hiện tại, hoặc `confidence_score` < 0.7 thì hệ thống sẽ tự động gán cờ cảnh báo (`warning_flag = True`) và ghi chú lý do.
+
+---
+
+## 3. Tài Liệu Thiết Kế Danh Sách API Backend (API Contract)
+
+Toàn bộ Backend đã được cung cấp tại cổng `http://localhost:8000`. Hệ thống tự động sinh tài liệu Swagger UI tại `http://localhost:8000/docs`.
+
+Danh sách các API endpoints chính dành cho thao tác dữ liệu:
+
+### 1. Thêm mới dữ liệu quét (Dành cho AI Module)
+*   **URL:** `/api/scan`
+*   **Method:** `POST`
+*   **Mô tả:** API quan trọng nhất. Team AI/CV sẽ gọi API này mỗi khi camera nhận dạng xong một sản phẩm.
+*   **Body (JSON):**
+```json
+{
+  "ai_analysis": {
+    "detected_object": "Sữa Tươi Vinamilk 180ml",    // Bắt buộc (Tên vật thể YOLO)
+    "ocr_text": "HSD: 20/05/2026",                  // Optional (Text trích xuất từ hình ảnh)
+    "price": "8,000 VND",                           // Optional
+    "confidence_score": 0.95                        // Float [0.0 - 1.0] (Độ tin cậy của AI)
+  },
+  "category": "dairy",                              // Phân loại: dairy, snack, beverage, medicine...
+  "expiry_date": "2026-05-20",                      // Chuẩn định dạng ISO YYYY-MM-DD
+  "warning_flag": false,                            // AI có tự phát hiện lỗi gì không?
+  "warning_reason": null                            // Lý do (Nếu có)
+}
+```
+
+### 2. Lấy danh sách lịch sử (Dành cho Frontend/Monitor)
+*   **URL:** `/api/logs`
+*   **Method:** `GET`
+*   **Query Parameters:**
+    *   `limit` (Optional, Default: 50): Số lượng lấy.
+    *   `offset` (Optional, Default: 0): Phân trang.
+    *   `warning_only` (Optional, Default: false): Chỉ lấy các logs bị cảnh báo.
+
+### 3. Cập nhật dữ liệu (Chỉnh sửa thủ công / Xác nhận)
+*   **URL:** `/api/logs/{log_id}`
+*   **Method:** `PUT`
+*   **Mô tả:** Cho phép cập nhật từng phần (Partial Update). Chỉ update những trường truyền lên.
+*   **Body (JSON) Gợi ý:**
+```json
+{
+    "detected_object": "Sữa hộp loại 1 lít",
+    "confidence_score": 0.98,
+    "warning_flag": true,
+    "warning_reason": "Vỏ hộp có vẻ bị móp"
+}
+```
+
+### 4. Xóa dữ liệu rác
+*   **URL:** `/api/logs/{log_id}`
+*   **Method:** `DELETE`
+*   **Mô tả:** Xóa vĩnh viễn log dựa trên ID. Trả về `{"message": "Đã xóa log thành công", "log_id": "ABC"}`
+
+### 5. Xem Chi Tiết Một Quét
+*   **URL:** `/api/logs/{log_id}`
+*   **Method:** `GET`
+
+### 6. Lấy Thông Tin Thống Kê Tổng Quan
+*   **URL:** `/api/stats`
+*   **Method:** `GET`
+*   **Mô tả:** Trả về các số liệu thống kê chung hiển thị trên card đồ thị:
+```json
+{
+  "total_logs": 120,
+  "today_logs": 15,
+  "warning_count": 3,
+  "avg_confidence": 0.89,
+  "top_product": "Mì tôm Hảo Hảo"
+}
+```
+
+---
+
+## 4. Hướng dẫn Tích Hợp (Dành cho AI Team)
+
+Để kết nối luồng xử lý từ Camera (Python/OpenCV), team AI chỉ cần dùng thư viện `requests` để đẩy data về API `/api/scan` như sau:
+
+```python
+import requests
+from datetime import datetime
+
+# Hàm giả lập gửi dữ liệu sau khi YOLOv8/PaddleOCR đọc xong object
+def push_data_to_dashboard(object_name, confidence, ocr_results, category_tag, expiry_string):
+    # Thay bằng IP máy chủ nếu chạy khác máy (VD: http://192.168.1.10:8000/api/scan)
+    API_URL = "http://localhost:8000/api/scan"
+    
+    payload = {
+        "ai_analysis": {
+            "detected_object": object_name,
+            "ocr_text": ocr_results,
+            "confidence_score": confidence,
+            "price": "N/A"
+        },
+        "category": category_tag,
+        "expiry_date": expiry_string  # Bắt buộc định dạng 'YYYY-MM-DD' để backend lọc HSD
+    }
+    
+    try:
+        response = requests.post(API_URL, json=payload)
+        if response.status_code == 200:
+            print("✅ Gửi tín hiệu thành công! Log ID:", response.json().get("log_id"))
+        else:
+            print("❌ Backend từ chối dữ liệu:", response.text)
+    except Exception as e:
+        print("⚠️ Lỗi mạng / Backend chưa bật:", e)
+
+# ------ TRONG VÒNG LẶP CAMERA KIỂM TRA ------
+# Nhận diện thành công 1 sản phẩm:
+# push_data_to_dashboard("Bánh Mì Kinh Đô", 0.95, "NSX 10/10 HSD 30/11", "bakery", "2023-11-30")
+```
+
+## 5. Kế Hoạch Tiếp Theo (Next Steps)
+1. **Team AI:** Nhanh chóng tích hợp đoạn code push API như trên vào luồng chạy suy luận (Inference Pipeline). Khởi động hệ thống kết hợp cả mô hình CV và Web hiển thị để kiểm thử đường truyền ngang nội bộ ở cổng `8000`.
+2. **Team Web:** Chỉnh sửa cách mapping màu sắc/Logo hiển thị tương ứng với bộ dataset (Categories) mà team AI đang train (VD: `medicine`, `packaged_food`, `vegetable`...).
+3. **Cả Nhóm:** Nghiên cứu phương án triển khai tích hợp lên máy vi tính nhúng cầm tay hoặc tối ưu thời gian phản hồi giữa Backend - Frontend để hạn chế delay.

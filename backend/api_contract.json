@@ -1,0 +1,90 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Shopping Scan Request",
+    "description": "Chuẩn dữ liệu giao tiếp giữa module AI/CV và Backend",
+    "type": "object",
+    "required": [
+        "ai_analysis"
+    ],
+    "properties": {
+        "log_id": {
+            "type": "string",
+            "description": "ID log, auto-gen nếu không cung cấp",
+            "example": "LOG_1001"
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời gian quét ISO 8601",
+            "example": "2026-03-07T08:30:00"
+        },
+        "image_base64": {
+            "type": "string",
+            "description": "Ảnh chụp base64 encoded JPEG",
+            "example": "data:image/jpeg;base64,/9j/4AAQ..."
+        },
+        "ai_analysis": {
+            "type": "object",
+            "required": [
+                "detected_object"
+            ],
+            "properties": {
+                "detected_object": {
+                    "type": "string",
+                    "description": "Tên sản phẩm AI nhận diện",
+                    "example": "Sữa tươi Vinamilk 100% 180ml"
+                },
+                "ocr_text": {
+                    "type": "string",
+                    "description": "Kết quả OCR",
+                    "example": "HSD: 20/12/2026"
+                },
+                "price": {
+                    "type": "string",
+                    "description": "Giá sản phẩm",
+                    "example": "8000 VND"
+                },
+                "confidence_score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Độ tin cậy 0-1",
+                    "example": 0.95
+                }
+            }
+        },
+        "status": {
+            "type": "string",
+            "enum": [
+                "success",
+                "error"
+            ],
+            "default": "success"
+        },
+        "warning_flag": {
+            "type": "boolean",
+            "default": false
+        },
+        "category": {
+            "type": "string",
+            "enum": [
+                "dairy",
+                "snack",
+                "beverage",
+                "bakery",
+                "condiment"
+            ],
+            "description": "Phân loại sản phẩm"
+        },
+        "expiry_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Ngày hết hạn ISO YYYY-MM-DD",
+            "example": "2026-12-20"
+        },
+        "warning_reason": {
+            "type": "string",
+            "description": "Lý do cảnh báo"
+        }
+    }
+}

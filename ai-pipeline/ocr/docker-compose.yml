@@ -1,0 +1,39 @@
+services:
+  ocr_agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kreuzberg_ocr_service
+    volumes:
+      - .:/app
+
+    command: tail -f /dev/null
+    env_file:
+      - .env
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama_service
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  ollama_pull_job:
+    image: curlimages/curl:latest
+    container_name: ollama_pull
+    depends_on:
+      - ollama
+    command: >
+      sh -c "
+        echo 'Waiting for Ollama Service to start...'
+        sleep 10
+        echo 'Downloading model phi3:mini (a few GBs), please wait...'
+        curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"phi3:mini\"}'
+        echo 'Successfully downloaded phi3:mini complete!'
+      "
+
+volumes:
+  ollama_data:

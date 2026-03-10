@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Backend API (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shopping-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./shopping.db
+      - ENVIRONMENT=development
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/models:/app/models
+      - shared-data:/shared
+    depends_on:
+      - ai-pipeline
+    networks:
+      - shopping-network
+    restart: unless-stopped
+
+  # AI Pipeline (YOLO + OCR + LLM + TTS)
+  ai-pipeline:
+    build:
+      context: ./ai-pipeline
+      dockerfile: Dockerfile
+    container_name: shopping-ai-pipeline
+    environment:
+      - YOLO_WEIGHTS_PATH=/weights/best.pt
+      - LLM_PROVIDER=gemini
+      - LLM_API_KEY=${GEMINI_API_KEY:-}
+      - TTS_PROVIDER=gtts
+    volumes:
+      - ./ai-pipeline/yolo/weights:/weights:ro
+      - shared-data:/shared
+      - webcam:/dev/video0  # Webcam access (Linux only)
+    ports:
+      - "8001:8001"
+    devices:
+      - /dev/video0:/dev/video0  # Webcam passthrough
+    privileged: true  # Cần cho webcam access
+    networks:
+      - shopping-network
+    restart: unless-stopped
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: shopping-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - shopping-network
+    restart: unless-stopped
+
+  # PostgreSQL Database (Production)
+  # Comment out nếu dùng SQLite cho development
+  # database:
+  #   image: postgres:15-alpine
+  #   container_name: shopping-db
+  #   environment:
+  #     - POSTGRES_USER=shopping
+  #     - POSTGRES_PASSWORD=shopping123
+  #     - POSTGRES_DB=shopping_db
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - shopping-network
+  #   restart: unless-stopped
+
+networks:
+  shopping-network:
+    driver: bridge
+
+volumes:
+  shared-data:  # Shared volume giữa backend và ai-pipeline
+  postgres-data:  # Database persistence
+  webcam:  # Webcam access
