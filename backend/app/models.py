@@ -129,6 +129,54 @@ class StatsResponse(BaseModel):
     top_product: Optional[str] = None
 
 
+class DebuggerSampleDoc(BaseModel):
+    """Debugger file entry for uploaded sample documents."""
+
+    name: str
+    size_bytes: int
+    modified_at: str
+    preview_url: str
+
+
+class DebuggerUploadResponse(BaseModel):
+    """Debugger upload response payload."""
+
+    message: str
+    upload_count: int
+    files: list[DebuggerSampleDoc]
+    sample_docs_path: str
+
+
+class DebuggerAgenticOcrStatus(BaseModel):
+    """Debugger run status for the sample-doc batch pipeline."""
+
+    status: str
+    is_running: bool
+    message: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    exit_code: Optional[int] = None
+    pid: Optional[int] = None
+    command: list[str] = Field(default_factory=list)
+    workdir: Optional[str] = None
+    python_executable: Optional[str] = None
+    runner_script: Optional[str] = None
+    output_json_path: Optional[str] = None
+    output_json_exists: bool = False
+    use_yolo: bool = True
+    enable_selection: bool = True
+    enable_tts: bool = True
+    log_lines: list[str] = Field(default_factory=list)
+
+
+class DebuggerAgenticOcrRunRequest(BaseModel):
+    """Debugger options for starting run_agentic_ocr.py from the web."""
+
+    use_yolo: bool = Field(default=True)
+    enable_selection: bool = Field(default=True)
+    enable_tts: bool = Field(default=True)
+
+
 class UpdateLogRequest(BaseModel):
     """Request body for PUT /api/logs/{log_id}."""
 

@@ -1,19 +1,60 @@
 """FastAPI application — serves both JSON API and HTML dashboard."""
 
-from fastapi import FastAPI, Request, Query, HTTPException
+from collections import deque
+from datetime import datetime
+from pathlib import Path
+import re
+import subprocess
+import sys
+import threading
+
+from fastapi import FastAPI, Request, Query, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import uvicorn
 
 from app.database import init_db, insert_log, get_logs, get_log_by_id, delete_log, update_log, get_stats, get_warning_logs
-from app.models import ScanRequest, LogResponse, StatsResponse, UpdateLogRequest
+from app.models import (
+    DebuggerAgenticOcrStatus,
+    DebuggerAgenticOcrRunRequest,
+    DebuggerSampleDoc,
+    DebuggerUploadResponse,
+    ScanRequest,
+    LogResponse,
+    StatsResponse,
+    UpdateLogRequest,
+)
 from app.mock_data import seed_database
 
 # ─── App Setup ───────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = Path(BASE_DIR).parent
+ALLOWED_DEBUGGER_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+DEBUGGER_MAX_LOG_LINES = 250
+
+_agentic_ocr_lock = threading.Lock()
+_agentic_ocr_logs: deque[str] = deque(maxlen=DEBUGGER_MAX_LOG_LINES)
+_agentic_ocr_status = {
+    "status": "idle",
+    "is_running": False,
+    "message": "Chưa chạy run_agentic_ocr.py từ web.",
+    "started_at": None,
+    "finished_at": None,
+    "exit_code": None,
+    "pid": None,
+    "command": [],
+    "workdir": None,
+    "python_executable": None,
+    "runner_script": None,
+    "output_json_path": None,
+    "output_json_exists": False,
+    "use_yolo": True,
+    "enable_selection": True,
+    "enable_tts": True,
+}
 
 app = FastAPI(
     title="Shopping Monitor API",
@@ -260,6 +301,127 @@ async def api_get_stats():
     return get_stats()
 
 
+@app.get("/api/debugger/sample-docs", response_model=list[DebuggerSampleDoc])
+async def api_list_sample_docs():
+    """List files available in ai-pipeline/sample_docs for debugger workflows."""
+    return _list_sample_docs()
+
+
+@app.get("/api/debugger/sample-docs/{filename}")
+async def api_get_sample_doc(filename: str):
+    """Serve a debugger sample image for preview/download."""
+    file_path = _resolve_sample_doc_path(filename)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)
+
+
+@app.post("/api/debugger/sample-docs/upload", response_model=DebuggerUploadResponse)
+async def api_upload_sample_docs(files: list[UploadFile] = File(...)):
+    """Upload one or more sample images into ai-pipeline/sample_docs."""
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    sample_docs_dir = _sample_docs_dir()
+    sample_docs_dir.mkdir(parents=True, exist_ok=True)
+    upload_count = 0
+
+    for upload in files:
+        if not upload.filename:
+            continue
+        suffix = Path(upload.filename).suffix.lower()
+        if suffix not in ALLOWED_DEBUGGER_SUFFIXES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {upload.filename}",
+            )
+
+        safe_name = _build_safe_sample_doc_name(upload.filename)
+        destination = sample_docs_dir / safe_name
+        content = await upload.read()
+        destination.write_bytes(content)
+        upload_count += 1
+
+    return DebuggerUploadResponse(
+        message="Đã tải ảnh vào sample_docs thành công",
+        upload_count=upload_count,
+        files=_list_sample_docs(),
+        sample_docs_path=str(sample_docs_dir),
+    )
+
+
+@app.delete("/api/debugger/sample-docs/{filename}", response_model=DebuggerUploadResponse)
+async def api_delete_sample_doc(filename: str):
+    """Delete a sample image from ai-pipeline/sample_docs."""
+    file_path = _resolve_sample_doc_path(filename)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    file_path.unlink()
+
+    return DebuggerUploadResponse(
+        message="Đã xóa ảnh khỏi sample_docs",
+        upload_count=0,
+        files=_list_sample_docs(),
+        sample_docs_path=str(_sample_docs_dir()),
+    )
+
+
+@app.get("/api/debugger/agentic-ocr/status", response_model=DebuggerAgenticOcrStatus)
+async def api_get_agentic_ocr_status():
+    """Get the current or most recent run_agentic_ocr.py status."""
+    return _serialize_agentic_ocr_status()
+
+
+@app.post("/api/debugger/agentic-ocr/run", response_model=DebuggerAgenticOcrStatus)
+async def api_run_agentic_ocr(options: DebuggerAgenticOcrRunRequest):
+    """Start run_agentic_ocr.py in the background so it can be triggered from the web debugger."""
+    with _agentic_ocr_lock:
+        if _agentic_ocr_status["is_running"]:
+            raise HTTPException(status_code=409, detail="run_agentic_ocr.py đang chạy")
+
+        python_executable = _resolve_ai_pipeline_python()
+        runner_script = _resolve_agentic_runner_script()
+        workdir = _resolve_ai_pipeline_workdir()
+        output_json_path = _resolve_agentic_output_json_path()
+
+        if not python_executable.exists():
+            raise HTTPException(
+                status_code=500,
+                detail=f"Python executable không tồn tại: {python_executable}",
+            )
+        if not runner_script.exists():
+            raise HTTPException(
+                status_code=500,
+                detail=f"Runner script không tồn tại: {runner_script}",
+            )
+
+        _agentic_ocr_logs.clear()
+        _agentic_ocr_status.update(
+            {
+                "status": "starting",
+                "is_running": True,
+                "message": "Đang khởi chạy run_agentic_ocr.py...",
+                "started_at": datetime.now().isoformat(),
+                "finished_at": None,
+                "exit_code": None,
+                "pid": None,
+                "command": [str(python_executable), str(runner_script)],
+                "workdir": str(workdir),
+                "python_executable": str(python_executable),
+                "runner_script": str(runner_script),
+                "output_json_path": str(output_json_path),
+                "output_json_exists": output_json_path.exists(),
+                "use_yolo": options.use_yolo,
+                "enable_selection": options.enable_selection,
+                "enable_tts": options.enable_tts,
+            }
+        )
+
+    thread = threading.Thread(target=_run_agentic_ocr_subprocess, daemon=True)
+    thread.start()
+    return _serialize_agentic_ocr_status()
+
+
 # ─── Helpers ─────────────────────────────────────────────────
 
 def _format_log(log: dict) -> dict:
@@ -289,6 +451,202 @@ def _is_truthy(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _sample_docs_dir() -> Path:
+    configured = os.getenv("DEBUGGER_SAMPLE_DOCS_DIR")
+    if configured:
+        return Path(configured)
+    return REPO_ROOT / "ai-pipeline" / "sample_docs"
+
+
+def _resolve_ai_pipeline_workdir() -> Path:
+    configured = os.getenv("DEBUGGER_AI_PIPELINE_WORKDIR")
+    if configured:
+        return Path(configured)
+    return REPO_ROOT / "ai-pipeline"
+
+
+def _resolve_agentic_runner_script() -> Path:
+    configured = os.getenv("DEBUGGER_AGENTIC_RUNNER")
+    if configured:
+        return Path(configured)
+    return _resolve_ai_pipeline_workdir() / "run_agentic_ocr.py"
+
+
+def _resolve_agentic_output_json_path() -> Path:
+    configured = os.getenv("AGENTIC_OUTPUT_JSON")
+    if configured:
+        return Path(configured)
+    return _resolve_ai_pipeline_workdir() / "tests" / "output.json"
+
+
+def _resolve_ai_pipeline_python() -> Path:
+    configured = os.getenv("DEBUGGER_AI_PIPELINE_PYTHON")
+    if configured:
+        return Path(configured)
+
+    workdir = _resolve_ai_pipeline_workdir()
+    candidates = [
+        workdir / ".venv" / "Scripts" / "python.exe",
+        workdir / ".venv" / "bin" / "python",
+        Path(sys.executable),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return Path(sys.executable)
+
+
+def _append_agentic_ocr_log(line: str) -> None:
+    cleaned = line.rstrip()
+    if not cleaned:
+        return
+    with _agentic_ocr_lock:
+        _agentic_ocr_logs.append(cleaned)
+
+
+def _serialize_agentic_ocr_status() -> DebuggerAgenticOcrStatus:
+    with _agentic_ocr_lock:
+        payload = dict(_agentic_ocr_status)
+        payload["log_lines"] = list(_agentic_ocr_logs)
+
+    output_json_path = payload.get("output_json_path")
+    payload["output_json_exists"] = bool(output_json_path and Path(output_json_path).exists())
+    return DebuggerAgenticOcrStatus(**payload)
+
+
+def _run_agentic_ocr_subprocess() -> None:
+    with _agentic_ocr_lock:
+        command = list(_agentic_ocr_status["command"])
+        workdir = _agentic_ocr_status["workdir"]
+        output_json_path = _agentic_ocr_status["output_json_path"]
+        use_yolo = _agentic_ocr_status["use_yolo"]
+        enable_selection = _agentic_ocr_status["enable_selection"]
+        enable_tts = _agentic_ocr_status["enable_tts"]
+
+    env = os.environ.copy()
+    env.setdefault("ENABLE_BACKEND_SYNC", "true")
+    env.setdefault("BACKEND_URL", "http://127.0.0.1:8000")
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    env["AGENTIC_USE_YOLO"] = str(use_yolo).lower()
+    env["AGENTIC_ENABLE_SELECTION"] = str(enable_selection).lower()
+    env["AGENTIC_ENABLE_TTS"] = str(enable_tts).lower()
+
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=workdir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+        )
+    except Exception as exc:
+        with _agentic_ocr_lock:
+            _agentic_ocr_status.update(
+                {
+                    "status": "failed",
+                    "is_running": False,
+                    "message": f"Không thể khởi chạy run_agentic_ocr.py: {exc}",
+                    "finished_at": datetime.now().isoformat(),
+                    "exit_code": None,
+                    "pid": None,
+                    "output_json_exists": bool(output_json_path and Path(output_json_path).exists()),
+                }
+            )
+        _append_agentic_ocr_log(f"[launcher-error] {exc}")
+        return
+
+    with _agentic_ocr_lock:
+        _agentic_ocr_status.update(
+            {
+                "status": "running",
+                "is_running": True,
+                "message": "run_agentic_ocr.py đang xử lý ảnh trong sample_docs...",
+                "pid": process.pid,
+            }
+        )
+
+    _append_agentic_ocr_log(f"[started] pid={process.pid}")
+
+    assert process.stdout is not None
+    for line in process.stdout:
+        _append_agentic_ocr_log(line)
+
+    exit_code = process.wait()
+    status = "completed" if exit_code == 0 else "failed"
+    message = (
+        "Đã chạy xong run_agentic_ocr.py."
+        if exit_code == 0
+        else f"run_agentic_ocr.py kết thúc với mã lỗi {exit_code}."
+    )
+
+    with _agentic_ocr_lock:
+        _agentic_ocr_status.update(
+            {
+                "status": status,
+                "is_running": False,
+                "message": message,
+                "finished_at": datetime.now().isoformat(),
+                "exit_code": exit_code,
+                "pid": None,
+                "output_json_exists": bool(output_json_path and Path(output_json_path).exists()),
+            }
+        )
+
+
+def _build_safe_sample_doc_name(original_name: str) -> str:
+    path = Path(original_name)
+    suffix = path.suffix.lower()
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "_", path.stem).strip("_") or "upload"
+    candidate = f"{stem}{suffix}"
+    destination = _sample_docs_dir() / candidate
+
+    if not destination.exists():
+        return candidate
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+    return f"{stem}_{timestamp}{suffix}"
+
+
+def _resolve_sample_doc_path(filename: str) -> Path:
+    safe_name = Path(filename).name
+    if safe_name != filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    suffix = Path(safe_name).suffix.lower()
+    if suffix not in ALLOWED_DEBUGGER_SUFFIXES:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+
+    return _sample_docs_dir() / safe_name
+
+
+def _serialize_sample_doc(file_path: Path) -> DebuggerSampleDoc:
+    stat = file_path.stat()
+    return DebuggerSampleDoc(
+        name=file_path.name,
+        size_bytes=stat.st_size,
+        modified_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        preview_url=f"/api/debugger/sample-docs/{file_path.name}",
+    )
+
+
+def _list_sample_docs() -> list[DebuggerSampleDoc]:
+    sample_docs_dir = _sample_docs_dir()
+    sample_docs_dir.mkdir(parents=True, exist_ok=True)
+    files = [
+        _serialize_sample_doc(path)
+        for path in sorted(
+            sample_docs_dir.iterdir(),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
+        if path.is_file() and path.suffix.lower() in ALLOWED_DEBUGGER_SUFFIXES
+    ]
+    return files
 
 
 def _format_price(price) -> str:

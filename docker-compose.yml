@@ -12,6 +12,7 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./shopping.db
       - ENVIRONMENT=development
+      - DEBUGGER_SAMPLE_DOCS_DIR=/shared/sample_docs
     volumes:
       - ./backend/app:/app/app
       - ./backend/models:/app/models
@@ -37,6 +38,7 @@ services:
       - TTS_PROVIDER=vieneu
       - ENABLE_BACKEND_SYNC=true
       - BACKEND_URL=http://backend:8000
+      - AGENTIC_SAMPLE_DIR=/shared/sample_docs
     volumes:
       - ./ai-pipeline/yolo/weights:/weights:ro
       - shared-data:/shared

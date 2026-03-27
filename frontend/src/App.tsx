@@ -7,6 +7,7 @@ import { PollProvider } from "@/lib/poll-context"
 import DashboardPage from "@/pages/dashboard"
 import HistoryPage from "@/pages/history"
 import AnalyticsPage from "@/pages/analytics"
+import DebuggerPage from "@/pages/debugger"
 
 function AppLayout() {
   return (
@@ -36,6 +37,7 @@ export function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/debugger" element={<DebuggerPage />} />
         </Route>
       </Routes>
       <Toaster richColors position="top-right" />

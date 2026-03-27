@@ -66,6 +66,10 @@ npm run dev
 
 Dashboard:
 - `http://127.0.0.1:5173`
+- Debugger upload ảnh: `http://127.0.0.1:5173/debugger`
+- Tại trang `Debugger`, bạn cũng có thể bấm chạy `run_agentic_ocr.py` trực tiếp từ web
+- Web-run hiện mặc định tương đương:
+  `AGENTIC_USE_YOLO=true`, `AGENTIC_ENABLE_SELECTION=true`, `AGENTIC_ENABLE_TTS=true`
 
 ## 4. Chạy AI Pipeline Với Ảnh Sample
 

@@ -7,6 +7,7 @@ const pageTitles: Record<string, string> = {
   "/": "Dashboard",
   "/history": "Lịch sử quét",
   "/analytics": "Phân tích",
+  "/debugger": "Debugger ảnh test",
 }
 
 export function SiteHeader() {

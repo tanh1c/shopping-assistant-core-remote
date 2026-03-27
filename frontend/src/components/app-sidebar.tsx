@@ -17,6 +17,7 @@ import {
   LayoutDashboardIcon,
   ScrollTextIcon,
   BarChart3Icon,
+  BugIcon,
   ScanEyeIcon,
   CircleHelpIcon,
   MoonIcon,
@@ -38,6 +39,7 @@ const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboardIcon },
   { title: "Lịch sử", url: "/history", icon: ScrollTextIcon },
   { title: "Phân tích", url: "/analytics", icon: BarChart3Icon },
+  { title: "Debugger", url: "/debugger", icon: BugIcon },
 ]
 
 export function AppSidebar({

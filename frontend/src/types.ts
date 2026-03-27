@@ -26,4 +26,38 @@ export interface Stats {
     top_product?: string | null
 }
 
+export interface DebuggerSampleDoc {
+    name: string
+    size_bytes: number
+    modified_at: string
+    preview_url: string
+}
+
+export interface DebuggerUploadResponse {
+    message: string
+    upload_count: number
+    files: DebuggerSampleDoc[]
+    sample_docs_path: string
+}
+
+export interface DebuggerAgenticOcrStatus {
+    status: string
+    is_running: boolean
+    message: string
+    started_at?: string | null
+    finished_at?: string | null
+    exit_code?: number | null
+    pid?: number | null
+    command: string[]
+    workdir?: string | null
+    python_executable?: string | null
+    runner_script?: string | null
+    output_json_path?: string | null
+    output_json_exists: boolean
+    use_yolo: boolean
+    enable_selection: boolean
+    enable_tts: boolean
+    log_lines: string[]
+}
+
 export type PollMode = "realtime" | "slow" | "off"
