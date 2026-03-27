@@ -18,7 +18,6 @@ import {
   ScrollTextIcon,
   BarChart3Icon,
   ScanEyeIcon,
-  Settings2Icon,
   CircleHelpIcon,
   MoonIcon,
   SunIcon,

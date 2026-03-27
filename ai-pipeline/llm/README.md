@@ -47,7 +47,7 @@ llm/
 
 ## Các approach
 
-### Option 1: Prompt Engineering với LLM API (Gemini/GPT)
+### Option 1: Prompt Engineering với LLM API (Gemini/GPT/Qwen-compatible)
 
 ```python
 from google import genai
@@ -84,3 +84,13 @@ pip install google-generativeai openai
 # LayoutLM (optional)
 pip install transformers paddlepaddle
 ```
+
+## Alibaba DashScope Option
+
+- Default provider mới của monorepo là `alibaba`
+- OpenAI-compatible base URL:
+  `https://coding-intl.dashscope.aliyuncs.com/v1`
+- Anthropic-compatible URL được lưu sẵn trong env cho các luồng khác:
+  `https://coding-intl.dashscope.aliyuncs.com/apps/anthropic`
+- Các model visual có thể cấu hình qua `LLM_MODEL`:
+  `qwen3.5-plus`, `kimi-k2.5`

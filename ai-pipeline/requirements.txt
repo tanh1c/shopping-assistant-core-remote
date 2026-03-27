@@ -19,8 +19,9 @@ pydantic>=2.0.0
 requests>=2.31.0
 
 # TTS
-gtts>=2.4.0
-playsound>=1.3.0
+# gTTS is optional and omitted from the default install because it conflicts
+# with newer Click versions pulled in by the OCR toolchain on Python 3.13.
+# Vieneu is installed separately in Dockerfile because it needs a custom package index.
 
 # Utilities
 python-dotenv>=1.0.0

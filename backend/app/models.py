@@ -1,35 +1,108 @@
 """Pydantic models for request/response validation."""
 
-from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class AIAnalysis(BaseModel):
-    """AI analysis result from CV module."""
+    """Legacy-compatible AI analysis result payload."""
+
     detected_object: str = Field(..., description="Tên sản phẩm AI nhận diện")
-    ocr_text: str = Field("", description="Kết quả OCR (HSD, thông tin)")
+    ocr_text: str = Field("", description="Kết quả OCR")
     price: str = Field("", description="Giá sản phẩm")
     confidence_score: float = Field(0.0, ge=0.0, le=1.0, description="Độ tin cậy 0-1")
+    category: Optional[str] = Field(None, description="Phân loại sản phẩm")
+    price_tag_text_normalized: Optional[str] = Field(
+        None,
+        description="Nội dung price tag đã được chuẩn hóa",
+    )
+    product_name_source: Optional[str] = Field(
+        None,
+        description="Nguồn suy luận tên sản phẩm",
+    )
+    selected_crop_name: Optional[str] = Field(
+        None,
+        description="Tên crop price tag được chọn",
+    )
+    selection_reason: Optional[str] = Field(
+        None,
+        description="Giải thích vì sao tag này được chọn",
+    )
+
+
+class SelectedResult(BaseModel):
+    """Native ai-pipeline selected result payload."""
+
+    name: Optional[str] = Field(None, description="Tên sản phẩm")
+    product_name: Optional[str] = Field(None, description="Tên sản phẩm đã chuẩn hóa")
+    price: Optional[float | int | str] = Field(None, description="Giá sản phẩm")
+    category: Optional[str] = Field(None, description="Phân loại sản phẩm")
+    raw_ocr_text: Optional[str] = Field(None, description="OCR text thô từ tag được chọn")
+    price_tag_text_normalized: Optional[str] = Field(
+        None,
+        description="Nội dung price tag đã được chuẩn hóa",
+    )
+    product_name_source: Optional[str] = Field(
+        None,
+        description="Nguồn suy luận tên sản phẩm",
+    )
+    selected_crop_name: Optional[str] = Field(
+        None,
+        description="Tên crop price tag được chọn",
+    )
+    selection_reason: Optional[str] = Field(
+        None,
+        description="Giải thích vì sao tag này được chọn",
+    )
+    selection_confidence: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Độ tin cậy bước chọn candidate",
+    )
+
+    def resolved_product_name(self) -> Optional[str]:
+        return self.product_name or self.name
 
 
 class ScanRequest(BaseModel):
-    """Request body for POST /api/scan — nhận dữ liệu từ AI module."""
+    """Request body for POST /api/scan."""
+
     log_id: Optional[str] = Field(None, description="ID log, auto-gen nếu không có")
     timestamp: Optional[str] = Field(None, description="Thời gian quét ISO 8601")
+    source_image: Optional[str] = Field(None, description="Tên ảnh gốc từ edge pipeline")
     image_base64: Optional[str] = Field(None, description="Ảnh base64 encoded")
-    ai_analysis: AIAnalysis
+    ai_analysis: Optional[AIAnalysis] = Field(
+        None,
+        description="Payload cũ từ AI module",
+    )
+    selected_result: Optional[SelectedResult] = Field(
+        None,
+        description="Payload mới từ ai-pipeline sau bước chọn price tag",
+    )
     status: str = Field("success", description="success / error")
-    warning_flag: bool = Field(False, description="Cảnh báo hay không")
+    warning_flag: Optional[bool] = Field(None, description="Cảnh báo hay không")
     category: Optional[str] = Field(None, description="Phân loại: dairy, snack, beverage...")
-    expiry_date: Optional[str] = Field(None, description="Ngày hết hạn ISO (YYYY-MM-DD)")
+    expiry_date: Optional[str] = Field(
+        None,
+        description="Deprecated. Giữ lại để backward-compatible.",
+    )
     warning_reason: Optional[str] = Field(None, description="Lý do cảnh báo")
+
+    @model_validator(mode="after")
+    def validate_payload(self):
+        if self.ai_analysis is None and self.selected_result is None:
+            raise ValueError("Either ai_analysis or selected_result must be provided.")
+        return self
 
 
 class LogResponse(BaseModel):
     """Response format cho 1 log entry."""
+
     log_id: str
     timestamp: str
+    source_image: Optional[str] = None
     image_base64: Optional[str] = None
     detected_object: str
     ocr_text: str
@@ -38,12 +111,17 @@ class LogResponse(BaseModel):
     status: str
     warning_flag: bool
     category: Optional[str] = None
-    expiry_date: Optional[str] = None
     warning_reason: Optional[str] = None
+    price_tag_text_normalized: Optional[str] = None
+    product_name_source: Optional[str] = None
+    selected_crop_name: Optional[str] = None
+    selection_reason: Optional[str] = None
+    expiry_date: Optional[str] = None
 
 
 class StatsResponse(BaseModel):
     """Response format cho thống kê tổng quan."""
+
     total_logs: int
     today_logs: int
     warning_count: int
@@ -52,13 +130,34 @@ class StatsResponse(BaseModel):
 
 
 class UpdateLogRequest(BaseModel):
-    """Request body for PUT /api/logs/{log_id} — cập nhật log entry."""
+    """Request body for PUT /api/logs/{log_id}."""
+
     detected_object: Optional[str] = Field(None, description="Tên sản phẩm")
     ocr_text: Optional[str] = Field(None, description="Kết quả OCR")
     price: Optional[str] = Field(None, description="Giá sản phẩm")
     confidence_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Độ tin cậy 0-1")
     category: Optional[str] = Field(None, description="Phân loại: dairy, snack, beverage...")
-    expiry_date: Optional[str] = Field(None, description="Ngày hết hạn ISO (YYYY-MM-DD)")
     warning_flag: Optional[bool] = Field(None, description="Cảnh báo hay không")
     warning_reason: Optional[str] = Field(None, description="Lý do cảnh báo")
     status: Optional[str] = Field(None, description="Trạng thái: success / error")
+    source_image: Optional[str] = Field(None, description="Tên ảnh gốc")
+    price_tag_text_normalized: Optional[str] = Field(
+        None,
+        description="Nội dung price tag đã được chuẩn hóa",
+    )
+    product_name_source: Optional[str] = Field(
+        None,
+        description="Nguồn suy luận tên sản phẩm",
+    )
+    selected_crop_name: Optional[str] = Field(
+        None,
+        description="Tên crop price tag được chọn",
+    )
+    selection_reason: Optional[str] = Field(
+        None,
+        description="Giải thích vì sao tag này được chọn",
+    )
+    expiry_date: Optional[str] = Field(
+        None,
+        description="Deprecated. Giữ lại để backward-compatible.",
+    )

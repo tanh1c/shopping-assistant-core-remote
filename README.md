@@ -57,6 +57,7 @@ shopping-assistant-core/
 │   │   └── README.md
 │   └── tts/                   # Text-to-Speech
 │       ├── tts_engine.py
+│       ├── vieneu_tts.py
 │       └── README.md
 │
 ├── frontend/                  # Next.js Dashboard
@@ -82,11 +83,15 @@ shopping-assistant-core/
 | **Frontend Dashboard** | Bạn | `frontend/` | ✅ Hoàn chỉnh |
 | **YOLO Detection** | Hải Tuấn, Tấn Hưng | `ai-pipeline/yolo/` | 🔴 Cần train model |
 | **OCR + LLM** | QHieu, NNam | `ai-pipeline/ocr/`, `ai-pipeline/llm/` | 🟡 Gần xong |
-| **TTS** | Bạn (setup) | `ai-pipeline/tts/` | 🟡 Template |
+| **TTS** | Bạn (setup) | `ai-pipeline/tts/` | ✅ gTTS + Vieneu |
 
 ---
 
 ## 🚀 Quick Start
+
+Lệnh chạy local mới nhất:
+- Xem [LOCAL_RUN_COMMANDS.md](./LOCAL_RUN_COMMANDS.md)
+- Webcam live runner: `python ai-pipeline/run_live_webcam.py`
 
 ### Yêu cầu hệ thống
 
@@ -219,6 +224,12 @@ JSON → TTS → Audio → Headphones
 # Gemini API (cho LLM)
 GEMINI_API_KEY=your_api_key_here
 
+# Alibaba DashScope (OpenAI-compatible)
+ALIBABA_API_KEY=your_api_key_here
+LLM_PROVIDER=alibaba
+LLM_BASE_URL=https://coding-intl.dashscope.aliyuncs.com/v1
+LLM_MODEL=qwen3.5-plus
+
 # Database
 DATABASE_URL=sqlite:///./shopping.db
 
@@ -342,10 +353,11 @@ conf_threshold = 0.5  # Tăng để giảm detections
 
 ```bash
 # Kiểm tra API key
-echo $GEMINI_API_KEY
+echo $ALIBABA_API_KEY
 
-# Test connection
-curl https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY
+# Test connection tới OpenAI-compatible endpoint
+curl https://coding-intl.dashscope.aliyuncs.com/v1/models \
+  -H "Authorization: Bearer $ALIBABA_API_KEY"
 ```
 
 ---

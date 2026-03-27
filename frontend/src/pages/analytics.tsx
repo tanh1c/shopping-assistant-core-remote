@@ -36,15 +36,7 @@ import {
     YAxis,
     CartesianGrid,
 } from "recharts"
-
-const CAT_COLORS: Record<string, string> = {
-    dairy: "#2563EB",
-    beverage: "#0891B2",
-    snack: "#D97706",
-    bakery: "#C4A77D",
-    condiment: "#7C3AED",
-    unknown: "#8A8A7A",
-}
+import { CATEGORY_CHART_COLORS, getCategoryLabel } from "@/lib/categories"
 
 export default function AnalyticsPage() {
     const [logs, setLogs] = useState<LogEntry[]>([])
@@ -70,12 +62,13 @@ export default function AnalyticsPage() {
         .sort(([, a], [, b]) => b - a)
         .map(([name, count]) => ({
             name,
+            label: getCategoryLabel(name),
             count,
-            fill: CAT_COLORS[name] || "#888",
+            fill: CATEGORY_CHART_COLORS[name] || "#888",
         }))
 
     const pieConfig: ChartConfig = Object.fromEntries(
-        catData.map((c) => [c.name, { label: c.name, color: c.fill }])
+        catData.map((c) => [c.name, { label: c.label, color: c.fill }])
     )
 
     // Confidence distribution
@@ -221,7 +214,7 @@ export default function AnalyticsPage() {
                                     <Pie
                                         data={catData}
                                         dataKey="count"
-                                        nameKey="name"
+                                        nameKey="label"
                                         cx="50%"
                                         cy="50%"
                                         outerRadius={90}

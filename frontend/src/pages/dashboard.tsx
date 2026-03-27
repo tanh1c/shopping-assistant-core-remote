@@ -38,6 +38,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
+import { CATEGORY_COLORS, CATEGORY_OPTIONS, getCategoryBadgeStyle, getCategoryLabel } from "@/lib/categories"
 import {
     PackageIcon,
     CalendarCheckIcon,
@@ -52,23 +53,6 @@ import {
     MoreHorizontal,
 } from "lucide-react"
 import { usePollMode } from "@/lib/poll-context"
-
-const CATS = [
-    { value: "", label: "Tất cả" },
-    { value: "dairy", label: "Sữa" },
-    { value: "snack", label: "Bánh kẹo" },
-    { value: "beverage", label: "Nước uống" },
-    { value: "bakery", label: "Bánh mì" },
-    { value: "condiment", label: "Gia vị" },
-]
-
-const catColor: Record<string, string> = {
-    dairy: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    beverage: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
-    snack: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    bakery: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-    condiment: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-}
 
 function confClass(c: number) {
     if (c >= 0.9) return "bg-green-500"
@@ -300,7 +284,7 @@ export default function DashboardPage() {
                         <AlertTriangleIcon className="size-3" />
                         Cảnh báo
                     </button>
-                    {CATS.filter((c) => c.value).map((c) => (
+                    {CATEGORY_OPTIONS.filter((c) => c.value).map((c) => (
                         <button
                             key={c.value}
                             onClick={() =>
@@ -332,7 +316,7 @@ export default function DashboardPage() {
                                     <TableHead>Sản phẩm</TableHead>
                                     <TableHead className="hidden sm:table-cell">Loại</TableHead>
                                     <TableHead className="hidden md:table-cell">Giá</TableHead>
-                                    <TableHead className="hidden lg:table-cell">Hạn SD</TableHead>
+                                    <TableHead className="hidden lg:table-cell">Nguồn</TableHead>
                                     <TableHead className="hidden sm:table-cell">AI %</TableHead>
                                     <TableHead>Trạng thái</TableHead>
                                     <TableHead>
@@ -381,29 +365,18 @@ export default function DashboardPage() {
                                                 {log.category && (
                                                     <Badge
                                                         variant="secondary"
-                                                        className={`text-[10px] uppercase font-semibold ${catColor[log.category] || ""}`}
+                                                        className={`text-[10px] font-semibold ${CATEGORY_COLORS[log.category] || ""}`}
+                                                        style={getCategoryBadgeStyle(log.category)}
                                                     >
-                                                        {log.category}
+                                                        {getCategoryLabel(log.category)}
                                                     </Badge>
                                                 )}
                                             </TableCell>
                                             <TableCell className="font-mono text-sm hidden md:table-cell">
                                                 {log.price || "—"}
                                             </TableCell>
-                                            <TableCell className="font-mono text-sm hidden lg:table-cell">
-                                                {log.expiry_date ? (
-                                                    <span
-                                                        className={
-                                                            new Date(log.expiry_date) < new Date()
-                                                                ? "text-red-600 dark:text-red-400 font-semibold"
-                                                                : "text-muted-foreground"
-                                                        }
-                                                    >
-                                                        {log.expiry_date}
-                                                    </span>
-                                                ) : (
-                                                    "—"
-                                                )}
+                                            <TableCell className="font-mono text-xs hidden lg:table-cell text-muted-foreground">
+                                                {log.source_image || log.selected_crop_name || "—"}
                                             </TableCell>
                                             <TableCell className="hidden sm:table-cell">
                                                 <div className="w-14 space-y-0.5">
@@ -523,9 +496,10 @@ export default function DashboardPage() {
                                     {log.category && (
                                         <Badge
                                             variant="secondary"
-                                            className={`text-[9px] h-4 ${catColor[log.category] || ""}`}
+                                            className={`text-[9px] h-4 ${CATEGORY_COLORS[log.category] || ""}`}
+                                            style={getCategoryBadgeStyle(log.category)}
                                         >
-                                            {log.category}
+                                            {getCategoryLabel(log.category)}
                                         </Badge>
                                     )}
                                     <span className="font-mono text-[11px] text-muted-foreground ml-auto">
@@ -561,16 +535,16 @@ export default function DashboardPage() {
                                 </div>
                                 <div>
                                     <p className="text-muted-foreground text-xs">Loại</p>
-                                    <p>{selected.category || "N/A"}</p>
+                                    <p>{getCategoryLabel(selected.category)}</p>
                                 </div>
                                 <div>
                                     <p className="text-muted-foreground text-xs">Giá</p>
                                     <p className="font-mono">{selected.price || "N/A"}</p>
                                 </div>
                                 <div>
-                                    <p className="text-muted-foreground text-xs">Hạn SD</p>
+                                    <p className="text-muted-foreground text-xs">Ảnh nguồn</p>
                                     <p className="font-mono">
-                                        {selected.expiry_date || "N/A"}
+                                        {selected.source_image || "N/A"}
                                     </p>
                                 </div>
                                 <div>
@@ -612,6 +586,42 @@ export default function DashboardPage() {
                                     </p>
                                     <p className="font-mono text-xs bg-muted rounded p-2 break-all">
                                         {selected.ocr_text}
+                                    </p>
+                                </div>
+                            )}
+                            {selected.price_tag_text_normalized && (
+                                <div>
+                                    <p className="text-muted-foreground text-xs mb-1">
+                                        Price Tag Đã Chuẩn Hóa
+                                    </p>
+                                    <p className="text-xs bg-muted rounded p-2 break-all">
+                                        {selected.price_tag_text_normalized}
+                                    </p>
+                                </div>
+                            )}
+                            {(selected.product_name_source || selected.selected_crop_name) && (
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <p className="text-muted-foreground text-xs">Nguồn tên</p>
+                                        <p className="font-mono text-xs break-all">
+                                            {selected.product_name_source || "N/A"}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-muted-foreground text-xs">Crop được chọn</p>
+                                        <p className="font-mono text-xs break-all">
+                                            {selected.selected_crop_name || "N/A"}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                            {selected.selection_reason && (
+                                <div>
+                                    <p className="text-muted-foreground text-xs mb-1">
+                                        Lý do chọn tag
+                                    </p>
+                                    <p className="text-xs bg-muted rounded p-2">
+                                        {selected.selection_reason}
                                     </p>
                                 </div>
                             )}
@@ -719,22 +729,12 @@ function EditDialog({
                             onChange={(e) => setEditForm({ ...editForm, detected_object: e.target.value })}
                         />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Giá</label>
-                            <Input
-                                value={editForm.price || ""}
-                                onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Hạn sử dụng</label>
-                            <Input
-                                type="date"
-                                value={editForm.expiry_date || ""}
-                                onChange={(e) => setEditForm({ ...editForm, expiry_date: e.target.value })}
-                            />
-                        </div>
+                    <div className="grid gap-2">
+                        <label className="text-sm font-medium">Giá</label>
+                        <Input
+                            value={editForm.price || ""}
+                            onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                        />
                     </div>
                     <div className="grid gap-2">
                         <label className="text-sm font-medium">Phân loại</label>
@@ -743,7 +743,7 @@ function EditDialog({
                             value={editForm.category || ""}
                             onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                         >
-                            {CATS.map((c) => (
+                            {CATEGORY_OPTIONS.map((c) => (
                                 <option key={c.value} value={c.value} className="text-background">{c.label || "Chưa phân loại"}</option>
                             ))}
                         </select>

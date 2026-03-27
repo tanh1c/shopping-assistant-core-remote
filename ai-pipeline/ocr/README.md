@@ -48,6 +48,21 @@ agentic_ocr/
 docker-compose up -d --build
 ```
 
+Mặc định bạn có thể dùng provider API qua `.env` với:
+
+```bash
+LLM_PROVIDER=alibaba
+LLM_BASE_URL=https://coding-intl.dashscope.aliyuncs.com/v1
+LLM_MODEL=qwen3.5-plus
+LLM_API_KEY=your_api_key
+```
+
+Nếu muốn bật lại Ollama local, chạy profile riêng:
+
+```bash
+docker-compose --profile ollama up -d --build
+```
+
 ### 2. Run OCR on a sample file
 
 Place your image in `sample_docs/` (e.g., `invoice_1.jpg`), then:

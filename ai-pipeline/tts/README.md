@@ -12,7 +12,8 @@ Module chuyển đổi văn bản thành giọng nói tiếng Việt cho ngườ
 
 ```
 tts/
-├── tts_engine.py         # TTS wrapper (gTTS, pyttsx3)
+├── tts_engine.py         # TTS wrapper (gTTS, pyttsx3, Vieneu)
+├── vieneu_tts.py         # Async adapter cho Vieneu Vietnamese TTS
 ├── voices/               # Audio cache
 ├── requirements.txt
 └── Dockerfile
@@ -61,6 +62,12 @@ engine.runAndWait()
 - Có nhiều giọng nam/nữ khác nhau
 - Cần API key (có free tier)
 
+### Option 4: Vieneu - Local Vietnamese TTS
+
+- Provider mới đã được ghép vào `TTSEngine` với key `vieneu`
+- Sinh file `.wav` cục bộ và phù hợp hơn với flow OCR -> LLM -> TTS trong repo
+- Dockerfile của `ai-pipeline` đã cài dependency cần thiết cho provider này
+
 ## API Interface
 
 ```python
@@ -91,11 +98,14 @@ Khi không dùng tai nghe Bluetooth, có thể gửi tín hiệu xuống Micro:b
 
 ```bash
 # gTTS (online)
-pip install gtts playsound
+pip install gtts
 
 # pyttsx3 (offline)
 pip install pyttsx3
 
 # Hoặc Vbee TTS (API)
 pip install requests
+
+# Vieneu (local provider)
+pip install vieneu --extra-index-url https://pnnbao97.github.io/llama-cpp-python-v0.3.16/cpu/
 ```

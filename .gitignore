@@ -25,6 +25,13 @@ venv/
 env/
 ENV/
 .venv
+backend/.venv/
+ai-pipeline/.venv/
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
 
 # IDE
 .vscode/
@@ -74,3 +81,15 @@ shared/*
 
 # Voices cache
 ai-pipeline/tts/voices/*.mp3
+ai-pipeline/voices/
+
+# AI pipeline generated artifacts
+ai-pipeline/audio/
+ai-pipeline/cropped_tags/
+ai-pipeline/captures/
+ai-pipeline/.kreuzberg/
+ai-pipeline/tests/output.json
+ai-pipeline/sample_docs/*.jpg
+ai-pipeline/sample_docs/*.jpeg
+ai-pipeline/sample_docs/*.png
+ai-pipeline/sample_docs/*.webp

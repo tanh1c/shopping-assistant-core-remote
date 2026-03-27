@@ -2,9 +2,14 @@ import asyncio
 import logging
 from pathlib import Path
 
-from kreuzberg_extractor import KreuzbergFramework, KreuzbergOCRExtractor
-from llm_extractor import OllamaLLMExtractor
-from pipeline import PriceTagPipeline
+try:
+    from .kreuzberg_extractor import KreuzbergFramework, KreuzbergOCRExtractor
+    from .llm_extractor import build_llm_extractor
+    from .pipeline import PriceTagPipeline
+except ImportError:
+    from kreuzberg_extractor import KreuzbergFramework, KreuzbergOCRExtractor
+    from llm_extractor import build_llm_extractor
+    from pipeline import PriceTagPipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,7 +28,7 @@ async def main():
         return
 
     ocr = KreuzbergOCRExtractor(framework=KreuzbergFramework(backend="paddleocr", language="vi"))
-    llm = OllamaLLMExtractor()
+    llm = build_llm_extractor()
     pipeline = PriceTagPipeline(ocr=ocr, llm=llm)
 
     result = await pipeline.run(test_file)

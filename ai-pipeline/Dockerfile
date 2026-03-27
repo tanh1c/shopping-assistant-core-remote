@@ -15,6 +15,13 @@ RUN apt-get update && apt-get install -y \
     libpangocairo-1.0-0 \
     libgtk-3-0 \
     libatlas-base-dev \
+    ffmpeg \
+    libsndfile1 \
+    build-essential \
+    gcc \
+    g++ \
+    cmake \
+    ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -26,6 +33,10 @@ RUN pip install --no-cache-dir \
     kreuzberg \
     paddlepaddle \
     onnxruntime
+
+# Install optional Vietnamese TTS provider
+RUN pip install --no-cache-dir vieneu \
+    --extra-index-url https://pnnbao97.github.io/llama-cpp-python-v0.3.16/cpu/
 
 # Copy AI pipeline code
 COPY . .

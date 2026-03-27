@@ -4,7 +4,10 @@ from typing import Optional, List, Dict
 import logging
 
 from kreuzberg import extract_file, OcrConfig, ExtractionConfig, ExtractionResult
-from interfaces import BaseOCRExtractor
+try:
+    from .interfaces import BaseOCRExtractor
+except ImportError:
+    from interfaces import BaseOCRExtractor
 
 logger = logging.getLogger("KreuzbergOCR")
 
