@@ -1,395 +1,430 @@
-# 🛒 Shopping Assistant cho Người Khiếm thị
+# Shopping Assistant Core
 
-Hệ thống AI đa phương thức hỗ trợ người khiếm thị mua sắm độc lập bằng cách nhận diện sản phẩm, đọc hạn sử dụng, giá tiền và thông báo qua giọng nói.
+Monorepo cho hệ thống hỗ trợ mua sắm dành cho người khiếm thị. Phiên bản hiện tại tập trung vào luồng xử lý local trên laptop:
+
+- webcam hoặc ảnh mẫu
+- YOLO phát hiện price tag
+- OCR trích xuất văn bản
+- LLM chọn đúng tag và chuẩn hóa thông tin sản phẩm
+- TTS đọc kết quả bằng tiếng Việt
+- FastAPI backend lưu log
+- React dashboard cho guardian theo dõi, chỉnh sửa và debug
 
 ![Architecture](docs/architecture.png)
 
----
+## Trạng thái hiện tại
 
-## 🏗 Kiến trúc hệ thống
+Codebase hiện tại đã có các phần chính sau:
 
+- `ai-pipeline` chạy được batch OCR từ thư mục `sample_docs`
+- `ai-pipeline` có live webcam runner và tự push kết quả lên backend/dashboard
+- `backend` nhận log từ pipeline, lưu SQLite, cung cấp API cho frontend
+- `frontend` là web dashboard dùng `React + Vite`, có 4 trang:
+  - `Dashboard`
+  - `History`
+  - `Analytics`
+  - `Debugger`
+- `Debugger` cho phép:
+  - upload ảnh trực tiếp vào `ai-pipeline/sample_docs`
+  - chạy `run_agentic_ocr.py` từ web
+  - bật/tắt `YOLO`, `AI selection`, `TTS`
+  - xem log chạy gần nhất
+- LLM mặc định đang ưu tiên Alibaba DashScope compatible API
+- TTS mặc định đang ưu tiên `vieneu`
+
+## Kiến trúc triển khai hiện tại
+
+Luồng chính trong repo hiện tại:
+
+```text
+Webcam / Sample Images
+        |
+        v
+ai-pipeline
+YOLO -> OCR -> LLM -> Category -> TTS
+        |
+        v
+POST /api/scan
+        |
+        v
+FastAPI backend + SQLite
+        |
+        v
+React guardian dashboard
+Dashboard / History / Analytics / Debugger
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    EDGE LAYER (Raspberry Pi 5)                  │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  [Webcam] → [YOLO Detection] → [OCR] → [LLM] → [TTS] → [Audio] │
-│                              ↓                                  │
-│                        [Backend API] → [Database]               │
-│                              ↓                                  │
-│                    [WebSocket Realtime]                         │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ WiFi/4G
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                  CLOUD LAYER (Render/Vercel)                    │
-├─────────────────────────────────────────────────────────────────┤
-│  [Guardian Dashboard] ←→ [API Gateway] ←→ [Supabase/Firebase]  │
-└─────────────────────────────────────────────────────────────────┘
-```
 
----
+Lưu ý:
 
-## 📁 Cấu trúc repository (Monorepo)
+- Hiện tại `ai-pipeline` không vận hành như một HTTP inference service riêng cho frontend.
+- Frontend làm việc với `backend`.
+- Khi bấm chạy batch từ trang `Debugger`, backend sẽ spawn `python run_agentic_ocr.py` trong `ai-pipeline`.
 
-```
+## Cấu trúc monorepo
+
+```text
 shopping-assistant-core/
-├── backend/                    # FastAPI backend
-│   ├── app/
-│   │   ├── main.py            # API Gateway
-│   │   ├── models.py          # Database models
-│   │   ├── database.py        # Database connection
-│   │   └── services/          # Business logic
-│   ├── requirements.txt
-│   └── Dockerfile
-│
-├── ai-pipeline/               # AI/ML Pipeline
-│   ├── pipeline.py            # Main orchestrator
-│   ├── yolo/                  # Object detection
+├── ai-pipeline/
+│   ├── pipeline.py                 # Orchestrator YOLO -> OCR -> LLM -> TTS
+│   ├── run_agentic_ocr.py         # Batch runner cho ảnh trong sample_docs
+│   ├── run_live_webcam.py         # Live webcam runner
+│   ├── backfill_categories.py     # Backfill category cho log cũ
+│   ├── backend_client.py          # Sync kết quả lên backend
+│   ├── yolo/
 │   │   ├── model.py
-│   │   └── weights/
-│   ├── ocr/                   # Text recognition
-│   │   ├── kreuzberg_extractor.py
-│   │   └── main.py
-│   ├── llm/                   # Information extraction
-│   │   ├── extractor.py
-│   │   └── README.md
-│   └── tts/                   # Text-to-Speech
-│       ├── tts_engine.py
-│       ├── vieneu_tts.py
-│       └── README.md
-│
-├── frontend/                  # Next.js Dashboard
+│   │   └── weights/best.pt
+│   ├── ocr/
+│   ├── llm/
+│   ├── tts/
+│   ├── sample_docs/               # Ảnh test batch
+│   ├── captures/                  # Ảnh chụp từ live webcam
+│   ├── cropped_tags/              # Crop YOLO để debug
+│   ├── audio/                     # Audio TTS đầu ra
+│   └── tests/
+│       ├── output.json
+│       └── test_pipeline.py
+├── backend/
+│   ├── app/
+│   │   ├── main.py                # FastAPI app + debugger endpoints
+│   │   ├── database.py            # SQLite CRUD
+│   │   ├── models.py              # Pydantic schemas
+│   │   └── mock_data.py
+│   └── requirements.txt
+├── frontend/
 │   ├── src/
-│   │   ├── components/
 │   │   ├── pages/
-│   │   └── App.tsx
-│   └── package.json
-│
-├── shared/                    # Shared utilities & types
-│
-├── docker-compose.yml         # Docker orchestration
+│   │   │   ├── dashboard.tsx
+│   │   │   ├── history.tsx
+│   │   │   ├── analytics.tsx
+│   │   │   └── debugger.tsx
+│   │   ├── components/
+│   │   ├── lib/
+│   │   ├── App.tsx
+│   │   └── types.ts
+│   ├── package.json
+│   └── Dockerfile
+├── docs/
+├── .env.example
+├── docker-compose.yml
+├── HANDOFF.md
+├── LOCAL_RUN_COMMANDS.md
 └── README.md
 ```
 
----
+## Stack công nghệ
 
-## 👥 Phân công theo module
+### AI Pipeline
 
-| Module | Thành viên | Folder | Status |
-|--------|------------|--------|--------|
-| **Backend API** | Bạn | `backend/` | ✅ Hoàn chỉnh |
-| **Frontend Dashboard** | Bạn | `frontend/` | ✅ Hoàn chỉnh |
-| **YOLO Detection** | Hải Tuấn, Tấn Hưng | `ai-pipeline/yolo/` | 🔴 Cần train model |
-| **OCR + LLM** | QHieu, NNam | `ai-pipeline/ocr/`, `ai-pipeline/llm/` | 🟡 Gần xong |
-| **TTS** | Bạn (setup) | `ai-pipeline/tts/` | ✅ gTTS + Vieneu |
+- Python 3.11
+- OpenCV
+- YOLO
+- Kreuzberg + PaddleOCR
+- LLM extraction qua Alibaba DashScope compatible API
+- TTS qua `vieneu`
 
----
+### Backend
 
-## 🚀 Quick Start
+- FastAPI
+- SQLite
+- Pydantic
 
-Lệnh chạy local mới nhất:
-- Xem [LOCAL_RUN_COMMANDS.md](./LOCAL_RUN_COMMANDS.md)
-- Webcam live runner: `python ai-pipeline/run_live_webcam.py`
+### Frontend
 
-### Yêu cầu hệ thống
+- React 19
+- TypeScript
+- Vite
+- React Router
+- Tailwind CSS
+- shadcn/ui
+- Recharts
 
-- Docker & Docker Compose
-- Python 3.10+
-- Node.js 18+
-- Webcam (cho AI pipeline)
-- GPU (optional, cho training YOLO)
+## Các tính năng chính
 
-### Option 1: Chạy toàn bộ bằng Docker (Recommended)
+### 1. Product scan pipeline
 
-```bash
-# Clone repository
-git clone https://github.com/your-org/shopping-assistant-core.git
-cd shopping-assistant-core
+- Detect nhiều price tag trong cùng một ảnh
+- OCR trên từng candidate crop
+- Cho LLM nhìn ảnh scene + crop để chọn đúng price tag khớp với sản phẩm
+- Chuẩn hóa tên sản phẩm và giá
+- Phân loại category bằng LLM
+- Sinh audio tiếng Việt cho kết quả cuối
 
-# Copy .env.example và cấu hình
-cp .env.example .env
-# Edit .env với API keys của bạn
+### 2. Guardian dashboard
 
-# Build và chạy tất cả services
-docker-compose up -d --build
+- `Dashboard`: thẻ thống kê, cảnh báo, recent products, confidence bar, category badge
+- `History`: xem log cũ, sửa record, xóa record
+- `Analytics`: pie chart category và bar chart confidence
+- `Debugger`: upload ảnh test, chạy batch OCR từ web, xem trạng thái và log
 
-# Xem logs
-docker-compose logs -f
+### 3. Batch sample workflow
 
-# Stop tất cả
-docker-compose down
+- đặt ảnh `.jpg/.jpeg/.png/.webp` vào `ai-pipeline/sample_docs`
+- chạy `python run_agentic_ocr.py`
+- kết quả tổng hợp được lưu vào `ai-pipeline/tests/output.json`
+
+### 4. Live webcam workflow
+
+- mở webcam local
+- bấm `SPACE` để chụp
+- pipeline xử lý và push log mới lên dashboard
+- hỗ trợ auto-capture theo chu kỳ
+
+## Yêu cầu môi trường
+
+Khuyên dùng:
+
+- Python `3.11`
+- Node.js `20+`
+- `npm`
+- webcam local nếu muốn test live
+- file YOLO weights tại `ai-pipeline/yolo/weights/best.pt`
+- API key cho Alibaba DashScope nếu dùng LLM cloud
+
+Lưu ý:
+
+- Trên Windows, nên chạy `ai-pipeline` local thay vì trông chờ Docker webcam passthrough.
+- Nếu dùng Python `3.13` có thể gặp lỗi với một số dependency OCR/Paddle.
+
+## Cấu hình nhanh
+
+Tạo file `.env` từ [`.env.example`](./.env.example):
+
+```powershell
+Copy-Item .env.example .env
 ```
 
-Truy cập:
-- **Frontend Dashboard**: http://localhost:3000
-- **Backend API Docs**: http://localhost:8000/api/docs
-- **AI Pipeline**: http://localhost:8001
+Các biến quan trọng nhất:
 
-### Option 2: Chạy local (Development)
-
-#### Backend
-
-```bash
-cd backend
-
-# Cài đặt dependencies
-pip install -r requirements.txt
-
-# Chạy server
-python -m app.main
-```
-
-Backend chạy tại: http://localhost:8000
-
-#### Frontend
-
-```bash
-cd frontend
-
-# Cài đặt dependencies
-npm install
-
-# Chạy dev server
-npm run dev
-```
-
-Frontend chạy tại: http://localhost:5173
-
-#### AI Pipeline
-
-```bash
-cd ai-pipeline
-
-# Cài đặt dependencies
-pip install -r requirements.txt
-
-# Chạy pipeline test
-python pipeline.py
-```
-
----
-
-## 🔌 API Endpoints
-
-### Backend API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/scan` | Nhận kết quả từ AI pipeline |
-| `GET` | `/api/logs` | Lấy danh sách lịch sử scan |
-| `GET` | `/api/stats` | Thống kê tổng quan |
-| `DELETE` | `/api/logs/{id}` | Xóa log |
-
-### AI Pipeline API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/process` | Xử lý ảnh (YOLO → OCR → LLM) |
-| `GET` | `/health` | Health check |
-
----
-
-## 📦 Data Flow
-
-### 1. User bấm nút trên Micro:bit
-```
-Micro:bit Button → Serial → Laptop
-```
-
-### 2. Webcam chụp ảnh
-```
-Webcam → OpenCV → AI Pipeline
-```
-
-### 3. AI Pipeline xử lý
-```
-Image → YOLO (detect) → Crop → OCR (read text) → LLM (extract) → JSON
-```
-
-### 4. Lưu database và thông báo
-```
-JSON → Backend API → Database → WebSocket → Frontend
-JSON → TTS → Audio → Headphones
-```
-
----
-
-## 🔧 Configuration
-
-### Environment Variables (.env)
-
-```bash
-# Gemini API (cho LLM)
-GEMINI_API_KEY=your_api_key_here
-
-# Alibaba DashScope (OpenAI-compatible)
-ALIBABA_API_KEY=your_api_key_here
+```env
+ALIBABA_API_KEY=your_key
 LLM_PROVIDER=alibaba
+LLM_API_KEY=your_key
 LLM_BASE_URL=https://coding-intl.dashscope.aliyuncs.com/v1
 LLM_MODEL=qwen3.5-plus
 
-# Database
-DATABASE_URL=sqlite:///./shopping.db
+TTS_PROVIDER=vieneu
 
-# API URLs
 BACKEND_URL=http://localhost:8000
-AI_PIPELINE_URL=http://localhost:8001
+ENABLE_BACKEND_SYNC=false
 
-# Webcam
 WEBCAM_INDEX=0
+AGENTIC_USE_YOLO=true
+AGENTIC_ENABLE_SELECTION=true
+AGENTIC_ENABLE_TTS=true
 ```
 
----
+Model visual hiện đang phù hợp:
 
-## 🧪 Testing
+- `qwen3.5-plus`
+- `kimi-k2.5`
 
-### Test AI Pipeline
+## Cách chạy local
 
-```bash
+Tài liệu lệnh đầy đủ nằm ở [LOCAL_RUN_COMMANDS.md](./LOCAL_RUN_COMMANDS.md).
+
+Luồng local khuyên dùng:
+
+### 1. Setup dependency
+
+Backend:
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm install
+```
+
+AI pipeline:
+
+```powershell
 cd ai-pipeline
-python pipeline.py
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+pip install -r ocr\requirements.txt
+pip install vieneu --extra-index-url https://pnnbao97.github.io/llama-cpp-python-v0.3.16/cpu/
 ```
 
-### Test Backend API
+### 2. Chạy backend
 
-```bash
-# Gửi test request
-curl -X POST http://localhost:8000/api/scan \
-  -H "Content-Type: application/json" \
-  -d '{
-    "detected_object": "Sữa tươi Vinamilk 180ml",
-    "ocr_text": "HSD: 20/12/2026",
-    "price": "15000 VND",
-    "confidence_score": 0.95
-  }'
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+$env:SEED_MOCK_DATA="false"
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### Test Frontend
+### 3. Chạy frontend
 
-```bash
+```powershell
 cd frontend
-npm run test
+npm run dev
 ```
 
----
+Truy cập:
 
-## 📝 Hướng dẫn phát triển cho từng module
+- Dashboard: `http://127.0.0.1:5173`
+- Debugger: `http://127.0.0.1:5173/debugger`
+- Backend docs: `http://127.0.0.1:8000/api/docs`
 
-### YOLO Module (Hải Tuấn, Tấn Hưng)
+### 4. Chạy batch OCR từ terminal
 
-1. Đọc `ai-pipeline/yolo/README.md`
-2. Train model trên Colab với notebook `train_colab.ipynb`
-3. Export weights về `ai-pipeline/yolo/weights/best.pt`
-4. Test inference với `python ai-pipeline/yolo/model.py`
-
-### OCR + LLM Module (QHieu, NNam)
-
-1. Đọc `ai-pipeline/ocr/README.md` và `ai-pipeline/llm/README.md`
-2. Implement extraction logic
-3. Test với ảnh sample trong `sample_docs/`
-4. Integration với pipeline: `python ai-pipeline/pipeline.py`
-
-### Frontend Dashboard (Bạn)
-
-1. Dashboard đã hoàn chỉnh ở `frontend/`
-2. Custom UI/UX theo yêu cầu
-3. Connect với backend API qua WebSocket cho realtime updates
-
----
-
-## 🔄 Deployment
-
-### Local (Raspberry Pi 5)
-
-```bash
-# Build cho ARM architecture
-docker-compose build
-
-# Chạy production mode
-docker-compose up -d
+```powershell
+cd ai-pipeline
+.\.venv\Scripts\Activate.ps1
+python run_agentic_ocr.py
 ```
 
-### Cloud (Guardian Dashboard)
+### 5. Chạy batch OCR từ web
 
-Frontend dashboard deploy lên Vercel/Render:
+1. mở `http://127.0.0.1:5173/debugger`
+2. upload ảnh vào `sample_docs`
+3. chọn các switch:
+   - `Dùng YOLO`
+   - `Chọn candidate bằng AI`
+   - `Bật TTS`
+4. bấm `Chạy run_agentic_ocr.py`
 
-```bash
-cd frontend
-vercel deploy --prod
+### 6. Chạy live webcam
+
+```powershell
+cd ai-pipeline
+.\.venv\Scripts\Activate.ps1
+$env:WEBCAM_INDEX="0"
+$env:ENABLE_BACKEND_SYNC="true"
+$env:BACKEND_URL="http://127.0.0.1:8000"
+python run_live_webcam.py
 ```
 
-Backend API có thể deploy lên Render/Railway:
+Controls:
 
-```bash
-# Deploy backend
-render deploy --workspace shopping-assistant-core
+- `SPACE`: chụp và xử lý ngay
+- `A`: bật/tắt auto capture
+- `Q`: thoát
+
+## Docker
+
+`docker-compose.yml` hiện đang dựng 3 service:
+
+- `backend`
+- `frontend`
+- `ai-pipeline`
+
+Chạy:
+
+```powershell
+docker-compose up -d --build
 ```
 
----
+Truy cập:
 
-## 🐛 Troubleshooting
+- Frontend: `http://localhost:3000`
+- Backend docs: `http://localhost:8000/api/docs`
 
-### Webcam không hoạt động trong Docker
+Lưu ý quan trọng về Docker hiện tại:
 
-```bash
-# Linux: Cấp quyền webcam
-sudo usermod -aG video $USER
+- frontend trong Docker được serve static ở cổng `3000`
+- backend ở cổng `8000`
+- `ai-pipeline` container hiện dùng cho môi trường đóng gói và chia sẻ `sample_docs`, không phải inference API public riêng
+- webcam passthrough trong compose chủ yếu phù hợp Linux
+- nếu test live webcam trên Windows, nên chạy `ai-pipeline` local
 
-# Windows: Dùng WSL2 với GPU passthrough
-# Hoặc chạy local thay vì Docker
+## API chính của backend
+
+### Public app / health
+
+- `GET /health`
+- `GET /`
+- `GET /history`
+- `GET /analytics`
+
+### JSON API cho dashboard và pipeline
+
+| Method | Endpoint | Mô tả |
+| --- | --- | --- |
+| `GET` | `/api/logs` | Lấy danh sách log |
+| `GET` | `/api/logs/{log_id}` | Lấy chi tiết 1 log |
+| `POST` | `/api/scan` | Nhận payload scan từ pipeline |
+| `PUT` | `/api/logs/{log_id}` | Cập nhật log |
+| `DELETE` | `/api/logs/{log_id}` | Xóa log |
+| `GET` | `/api/stats` | Lấy thống kê tổng quan |
+
+### Debugger API
+
+| Method | Endpoint | Mô tả |
+| --- | --- | --- |
+| `GET` | `/api/debugger/sample-docs` | Liệt kê ảnh trong `sample_docs` |
+| `GET` | `/api/debugger/sample-docs/{filename}` | Xem ảnh debugger |
+| `POST` | `/api/debugger/sample-docs/upload` | Upload ảnh test |
+| `DELETE` | `/api/debugger/sample-docs/{filename}` | Xóa ảnh test |
+| `GET` | `/api/debugger/agentic-ocr/status` | Trạng thái runner batch |
+| `POST` | `/api/debugger/agentic-ocr/run` | Chạy `run_agentic_ocr.py` từ web |
+
+## Các output quan trọng
+
+- Ảnh test batch: [ai-pipeline/sample_docs](./ai-pipeline/sample_docs)
+- Output JSON: [ai-pipeline/tests/output.json](./ai-pipeline/tests/output.json)
+- Crop YOLO: [ai-pipeline/cropped_tags](./ai-pipeline/cropped_tags)
+- Audio TTS: [ai-pipeline/audio](./ai-pipeline/audio)
+- Capture webcam live: [ai-pipeline/captures](./ai-pipeline/captures)
+
+## Troubleshooting
+
+### 1. Cài dependency OCR bị lỗi trên Python 3.13
+
+Chuyển sang Python `3.11`.
+
+### 2. `run_agentic_ocr.py` không phát hiện được gì
+
+Kiểm tra:
+
+- ảnh đã nằm trong `ai-pipeline/sample_docs`
+- weights tồn tại ở `ai-pipeline/yolo/weights/best.pt`
+- `AGENTIC_USE_YOLO=true`
+
+### 3. Dashboard không thấy log mới
+
+Kiểm tra:
+
+- backend đang chạy ở `http://127.0.0.1:8000`
+- `ENABLE_BACKEND_SYNC=true` khi chạy pipeline
+- frontend đang dùng đúng `VITE_API_BASE_URL`
+
+### 4. Nút chạy batch từ web không hoạt động
+
+Backend sẽ cố chạy Python trong:
+
+- `ai-pipeline/.venv/Scripts/python.exe` trên Windows
+- hoặc Python override từ `DEBUGGER_AI_PIPELINE_PYTHON`
+
+Hãy chắc chắn `ai-pipeline/.venv` đã được cài dependency đầy đủ.
+
+### 5. Webcam không mở được
+
+Thử đổi:
+
+```powershell
+$env:WEBCAM_INDEX="1"
+python run_live_webcam.py
 ```
 
-### thiếu RAM trên Raspberry Pi
+## Tài liệu liên quan
 
-```bash
-# Giảm batch size của YOLO
-# Edit ai-pipeline/yolo/model.py
-conf_threshold = 0.5  # Tăng để giảm detections
-```
+- [LOCAL_RUN_COMMANDS.md](./LOCAL_RUN_COMMANDS.md)
+- [QUICKSTART.md](./QUICKSTART.md)
+- [HANDOFF.md](./HANDOFF.md)
+- [.env.example](./.env.example)
 
-### LLM API không hoạt động
+## Ghi chú
 
-```bash
-# Kiểm tra API key
-echo $ALIBABA_API_KEY
-
-# Test connection tới OpenAI-compatible endpoint
-curl https://coding-intl.dashscope.aliyuncs.com/v1/models \
-  -H "Authorization: Bearer $ALIBABA_API_KEY"
-```
-
----
-
-## 📚 Tài liệu
-
-- [Project Proposal](../project_overview.md)
-- [API Contract](backend/api_contract.json)
-- [Training YOLO](train_colab.ipynb)
-
----
-
-## 🤝 Đóng góp
-
-1. Fork repository
-2. Tạo branch cho module của bạn
-3. Commit code vào folder được phân công
-4. Tạo Pull Request
-
----
-
-## 📄 License
-
-MIT License - Xem [LICENSE](LICENSE) để biết chi tiết.
-
----
-
-## 📞 Liên hệ
-
-- **You (UI/Dashboard Lead)**: Your email
-- **Project Repository**: https://github.com/your-org/shopping-assistant-core
-
----
-
-**Built with ❤️ for accessibility**
+README này phản ánh codebase hiện tại trong repo. Nếu bạn thay đổi thêm luồng deploy cloud, DB production, hoặc inference service dạng HTTP riêng cho `ai-pipeline`, hãy cập nhật lại README để tránh lệch với cách chạy thực tế.
