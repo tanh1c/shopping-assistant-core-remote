@@ -54,7 +54,7 @@ services:
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
-    staticPublishPath: frontend/dist
+    staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
         value: https://shopping-assistant-backend.onrender.com
