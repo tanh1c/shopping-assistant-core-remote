@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libgtk-3-0 \
-    libatlas-base-dev \
     ffmpeg \
     libsndfile1 \
     build-essential \
