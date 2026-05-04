@@ -23,12 +23,26 @@ The current [render.yaml](./render.yaml) is tuned for the Render free tier.
 
 ## Important notes
 
-- The backend stores SQLite at `/tmp/shopping.db` on free tier.
-- This means backend data is ephemeral and can be lost whenever the free service restarts or spins down.
+- The backend keeps a local replica file at `/tmp/shopping.db`.
+- For durable free storage, set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` on the backend service.
+- Without Turso, `/tmp/shopping.db` is ephemeral and can be lost whenever the free service restarts or spins down.
 - The reference-price CSV is baked into the backend image at `/app/data/reference_prices.csv`.
 - The AI pipeline syncs to the backend over the backend's public Render URL.
 - The AI pipeline must stay a public web service so Raspberry Pi can call `POST /infer`.
 - Free web services spin down after idle time, so the first request after idle can be slow.
+
+## Recommended free database setup
+
+Use Turso for the backend database while keeping the backend web service on Render Free.
+
+Backend env vars:
+
+```text
+TURSO_DATABASE_URL=libsql://<your-db>-<your-org>.turso.io
+TURSO_AUTH_TOKEN=<your-token>
+SHOPPING_DB_PATH=/tmp/shopping.db
+TURSO_SYNC_INTERVAL_SECONDS=30
+```
 
 ## Frontend API URL
 

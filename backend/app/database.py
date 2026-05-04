@@ -1,10 +1,21 @@
-"""SQLite database setup & CRUD functions."""
+"""Database setup & CRUD helpers.
+
+Supports:
+- local SQLite via ``sqlite3``
+- Turso/libSQL via embedded replica sync when ``TURSO_DATABASE_URL`` is set
+"""
 
 import os
 import sqlite3
+from collections.abc import Iterator, Mapping
 from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+try:
+    import libsql
+except ImportError:  # pragma: no cover - optional dependency for Turso mode
+    libsql = None
 
 REQUIRED_COLUMNS = {
     "source_image": "TEXT",
@@ -18,8 +29,93 @@ REQUIRED_COLUMNS = {
 }
 
 
+class ResultRow(Mapping[str, Any]):
+    """Small compatibility wrapper for sqlite3.Row and libsql tuple rows."""
+
+    __slots__ = ("_columns", "_values", "_mapping")
+
+    def __init__(self, columns: list[str], values: tuple[Any, ...]):
+        self._columns = columns
+        self._values = values
+        self._mapping = dict(zip(columns, values))
+
+    def __getitem__(self, key: str | int) -> Any:
+        if isinstance(key, int):
+            return self._values[key]
+        return self._mapping[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._mapping)
+
+    def __len__(self) -> int:
+        return len(self._mapping)
+
+
+class CursorWrapper:
+    """Normalize fetch results across sqlite3 and libsql."""
+
+    def __init__(self, cursor: Any):
+        self._cursor = cursor
+        description = getattr(cursor, "description", None) or []
+        self._columns = [column[0] for column in description]
+
+    def _wrap_row(self, row: Any) -> Any:
+        if row is None or not self._columns:
+            return row
+        if isinstance(row, ResultRow):
+            return row
+        return ResultRow(self._columns, tuple(row))
+
+    def fetchone(self) -> Any:
+        return self._wrap_row(self._cursor.fetchone())
+
+    def fetchall(self) -> list[Any]:
+        return [self._wrap_row(row) for row in self._cursor.fetchall()]
+
+    @property
+    def rowcount(self) -> int:
+        return getattr(self._cursor, "rowcount", -1)
+
+
+class ConnectionWrapper:
+    """Thin adapter exposing the subset of DB-API we use in the app."""
+
+    def __init__(self, connection: Any, provider: str):
+        self._connection = connection
+        self.provider = provider
+
+    def execute(self, query: str, params: Any = None) -> CursorWrapper:
+        if params is None:
+            cursor = self._connection.execute(query)
+        else:
+            cursor = self._connection.execute(query, params)
+        return CursorWrapper(cursor)
+
+    def commit(self) -> None:
+        self._connection.commit()
+        self._sync_if_supported(raise_on_error=False)
+
+    def close(self) -> None:
+        self._connection.close()
+
+    def _sync_if_supported(self, *, raise_on_error: bool) -> None:
+        if self.provider != "turso" or not hasattr(self._connection, "sync"):
+            return
+        try:
+            self._connection.sync()
+        except Exception:
+            if raise_on_error:
+                raise
+
+
 def _default_db_path() -> Path:
     return Path(__file__).resolve().parent / "shopping.db"
+
+
+def resolve_database_provider() -> str:
+    if resolve_turso_database_url():
+        return "turso"
+    return "sqlite"
 
 
 def resolve_db_path() -> Path:
@@ -36,13 +132,63 @@ def resolve_db_path() -> Path:
     return _default_db_path()
 
 
-def get_connection() -> sqlite3.Connection:
-    """Get SQLite connection with Row factory."""
+def resolve_turso_database_url() -> str:
+    url = os.getenv("TURSO_DATABASE_URL", "").strip()
+    if url:
+        return url
+
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url.startswith("libsql://"):
+        return database_url
+
+    return ""
+
+
+def _resolve_turso_auth_token() -> str:
+    return os.getenv("TURSO_AUTH_TOKEN", "").strip()
+
+
+def _resolve_turso_sync_interval() -> int | None:
+    raw = os.getenv("TURSO_SYNC_INTERVAL_SECONDS", "").strip()
+    if not raw:
+        return 30
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return 30
+    return parsed if parsed > 0 else None
+
+
+def get_connection() -> ConnectionWrapper:
+    """Get a normalized DB connection for SQLite or Turso/libSQL."""
     db_path = resolve_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    provider = resolve_database_provider()
+    if provider == "turso":
+        if libsql is None:
+            raise RuntimeError(
+                "Turso backend requested but 'libsql' is not installed. "
+                "Install backend requirements again."
+            )
+
+        turso_url = resolve_turso_database_url()
+        auth_token = _resolve_turso_auth_token()
+        if not turso_url or not auth_token:
+            raise RuntimeError(
+                "Turso backend requested but TURSO_DATABASE_URL/TURSO_AUTH_TOKEN is missing."
+            )
+
+        conn = libsql.connect(
+            str(db_path),
+            sync_url=turso_url,
+            auth_token=auth_token,
+            sync_interval=_resolve_turso_sync_interval(),
+        )
+        return ConnectionWrapper(conn, provider="turso")
+
     conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    return conn
+    return ConnectionWrapper(conn, provider="sqlite")
 
 
 def init_db():

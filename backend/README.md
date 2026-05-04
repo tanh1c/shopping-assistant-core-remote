@@ -1,7 +1,7 @@
 # Shopping Monitor Dashboard
 
 Hệ thống ghi nhận hoạt động mua sắm cho người khiếm thị.  
-Backend: **FastAPI + SQLite**
+Backend: **FastAPI + SQLite / Turso (libSQL)**
 Frontend: **React (Vite) + Tailwind CSS + shadcn/ui**
 
 ## Quick Start (Development)
@@ -17,6 +17,22 @@ pip install -r requirements.txt
 python -m app.main
 ```
 Backend sẽ chạy tại: **http://localhost:8000** (API docs: `http://localhost:8000/api/docs`)
+
+## Durable Free Database Option
+
+Nếu deploy backend trên Render Free, file SQLite local sẽ không bền. Repo này hiện hỗ trợ
+**Turso / libSQL** để lưu dữ liệu lâu hơn mà vẫn giữ cú pháp SQLite gần như nguyên vẹn.
+
+Thiết lập tối thiểu:
+
+```bash
+TURSO_DATABASE_URL=libsql://your-db-name-your-org.turso.io
+TURSO_AUTH_TOKEN=your_token
+SHOPPING_DB_PATH=/tmp/shopping.db
+TURSO_SYNC_INTERVAL_SECONDS=30
+```
+
+Khi `TURSO_DATABASE_URL` được set, backend sẽ tự chuyển sang dùng Turso embedded replica.
 
 
 **2. Chạy Frontend (React/Vite)**
