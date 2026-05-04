@@ -117,6 +117,7 @@ class LogResponse(BaseModel):
     selected_crop_name: Optional[str] = None
     selection_reason: Optional[str] = None
     expiry_date: Optional[str] = None
+    reference_price_suggestion: Optional["ReferencePriceSuggestion"] = None
 
 
 class StatsResponse(BaseModel):
@@ -127,6 +128,91 @@ class StatsResponse(BaseModel):
     warning_count: int
     avg_confidence: float
     top_product: Optional[str] = None
+
+
+class ReferencePriceResponse(BaseModel):
+    """Normalized reference retail price record."""
+
+    id: int
+    product_name: str
+    brand: Optional[str] = None
+    variant: Optional[str] = None
+    size_or_volume: Optional[str] = None
+    category: Optional[str] = None
+    raw_category: Optional[str] = None
+    currency: str
+    country: str
+    price_min_vnd: Optional[int] = None
+    price_max_vnd: Optional[int] = None
+    price_avg_vnd: Optional[int] = None
+    source_1_name: Optional[str] = None
+    source_1_price_vnd: Optional[int] = None
+    source_1_url: Optional[str] = None
+    source_2_name: Optional[str] = None
+    source_2_price_vnd: Optional[int] = None
+    source_2_url: Optional[str] = None
+    source_3_name: Optional[str] = None
+    source_3_price_vnd: Optional[int] = None
+    source_3_url: Optional[str] = None
+    checked_at: Optional[str] = None
+    confidence: Optional[str] = None
+    notes: Optional[str] = None
+    source_csv: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class ReferencePriceSuggestion(BaseModel):
+    """Closest reference-price match for a scanned product."""
+
+    reference_price_id: int
+    match_score: float
+    match_method: str
+    product_name: str
+    brand: Optional[str] = None
+    variant: Optional[str] = None
+    size_or_volume: Optional[str] = None
+    category: Optional[str] = None
+    raw_category: Optional[str] = None
+    currency: str
+    price_min_vnd: Optional[int] = None
+    price_max_vnd: Optional[int] = None
+    price_avg_vnd: Optional[int] = None
+    confidence: Optional[str] = None
+    checked_at: Optional[str] = None
+    notes: Optional[str] = None
+    source_1_name: Optional[str] = None
+    source_1_url: Optional[str] = None
+
+
+class ReferencePriceListResponse(BaseModel):
+    """Paginated reference price list payload."""
+
+    total: int
+    limit: int
+    offset: int
+    items: list[ReferencePriceResponse]
+
+
+class ReferencePriceCategorySummary(BaseModel):
+    """Category summary for the reference price catalog."""
+
+    category: Optional[str] = None
+    item_count: int
+
+
+class ReferencePriceImportResponse(BaseModel):
+    """CSV import result for reference retail prices."""
+
+    ok: bool
+    message: str
+    csv_path: str
+    found_file: bool
+    rows_read: int
+    upserted: int
+    total_rows_in_db: int
+    category_counts: dict[str, int] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class DebuggerSampleDoc(BaseModel):
@@ -209,3 +295,6 @@ class UpdateLogRequest(BaseModel):
         None,
         description="Deprecated. Giữ lại để backward-compatible.",
     )
+
+
+LogResponse.model_rebuild()

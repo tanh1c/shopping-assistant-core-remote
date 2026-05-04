@@ -31,10 +31,10 @@ class ShoppingAssistantPipeline:
             'yolo_weights': os.getenv('YOLO_WEIGHTS_PATH', 'yolo/weights/best.pt'),
             'ocr_backend': os.getenv('OCR_BACKEND', 'paddleocr'),
             'ocr_language': os.getenv('OCR_LANGUAGE', 'vi'),
-            'llm_provider': os.getenv('LLM_PROVIDER', 'alibaba'),
-            'llm_api_key': os.getenv('LLM_API_KEY') or os.getenv('ALIBABA_API_KEY'),
-            'llm_model': os.getenv('LLM_MODEL', 'qwen3.5-plus'),
-            'llm_base_url': os.getenv('LLM_BASE_URL', 'https://coding-intl.dashscope.aliyuncs.com/v1'),
+            'llm_provider': os.getenv('LLM_PROVIDER', 'openai'),
+            'llm_api_key': os.getenv('OPENAI_API_KEY') or os.getenv('LLM_API_KEY') or os.getenv('ALIBABA_API_KEY'),
+            'llm_model': os.getenv('LLM_MODEL'),
+            'llm_base_url': os.getenv('LLM_BASE_URL'),
             'llm_timeout_seconds': int(os.getenv('LLM_TIMEOUT_SECONDS', '60')),
             'tts_provider': os.getenv('TTS_PROVIDER', 'gtts'),
             'enable_backend_sync': backend_sync_enabled(default=False),
@@ -58,7 +58,7 @@ class ShoppingAssistantPipeline:
         print("  ✅ OCR Extractor initialized")
 
         # LLM Extractor
-        llm_provider = self.config.get('llm_provider', 'alibaba')
+        llm_provider = self.config.get('llm_provider', 'openai')
         llm_api_key = self.config.get('llm_api_key')
         llm_model = self.config.get('llm_model')
         llm_base_url = self.config.get('llm_base_url')

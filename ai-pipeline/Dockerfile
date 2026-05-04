@@ -53,7 +53,7 @@ ENV YOLO_WEIGHTS_PATH=/weights/best.pt
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
-    CMD python -c "print('AI Pipeline OK')"
+    CMD python -c "import requests; requests.get('http://localhost:8001/health', timeout=10).raise_for_status()"
 
-# Run the pipeline
-CMD ["python", "pipeline.py"]
+# Run the HTTP inference service
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8001"]

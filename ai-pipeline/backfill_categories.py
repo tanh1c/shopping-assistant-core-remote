@@ -99,8 +99,8 @@ def main():
     }
 
     extractor = LLMExtractor(
-        provider=os.getenv("LLM_PROVIDER", "alibaba"),
-        api_key=os.getenv("LLM_API_KEY") or os.getenv("ALIBABA_API_KEY"),
+        provider=os.getenv("LLM_PROVIDER", "openai"),
+        api_key=os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY") or os.getenv("ALIBABA_API_KEY"),
         model=os.getenv("LLM_MODEL"),
         base_url=os.getenv("LLM_BASE_URL"),
         timeout_seconds=int(os.getenv("LLM_TIMEOUT_SECONDS", "60")),

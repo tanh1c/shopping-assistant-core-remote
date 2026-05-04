@@ -13,6 +13,9 @@ REQUIRED_COLUMNS = {
     "product_name_source": "TEXT",
     "selected_crop_name": "TEXT",
     "selection_reason": "TEXT",
+    "reference_price_id": "INTEGER",
+    "reference_price_match_score": "REAL",
+    "reference_price_match_method": "TEXT",
 }
 
 
@@ -44,7 +47,10 @@ def init_db():
             price_tag_text_normalized TEXT,
             product_name_source TEXT,
             selected_crop_name TEXT,
-            selection_reason TEXT
+            selection_reason TEXT,
+            reference_price_id INTEGER,
+            reference_price_match_score REAL,
+            reference_price_match_method TEXT
         )
     """)
 
@@ -105,8 +111,9 @@ def insert_log(data: dict) -> str:
         INSERT OR REPLACE INTO shopping_logs
         (log_id, timestamp, source_image, image_base64, detected_object, ocr_text, price,
          confidence_score, status, warning_flag, category, expiry_date, warning_reason,
-         price_tag_text_normalized, product_name_source, selected_crop_name, selection_reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         price_tag_text_normalized, product_name_source, selected_crop_name, selection_reason,
+         reference_price_id, reference_price_match_score, reference_price_match_method)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         log_id,
         timestamp,
@@ -125,6 +132,9 @@ def insert_log(data: dict) -> str:
         data.get("product_name_source"),
         data.get("selected_crop_name"),
         data.get("selection_reason"),
+        data.get("reference_price_id"),
+        data.get("reference_price_match_score"),
+        data.get("reference_price_match_method"),
     ))
     conn.commit()
     conn.close()
@@ -215,6 +225,18 @@ def update_log(log_id: str, data: dict) -> Optional[dict]:
             "selection_reason",
             existing.get("selection_reason"),
         ),
+        "reference_price_id": data.get(
+            "reference_price_id",
+            existing.get("reference_price_id"),
+        ),
+        "reference_price_match_score": data.get(
+            "reference_price_match_score",
+            existing.get("reference_price_match_score"),
+        ),
+        "reference_price_match_method": data.get(
+            "reference_price_match_method",
+            existing.get("reference_price_match_method"),
+        ),
     }
 
     warning_flag, warning_reason = _apply_warning_rules(merged_data)
@@ -225,7 +247,8 @@ def update_log(log_id: str, data: dict) -> Optional[dict]:
             confidence_score = ?, category = ?, expiry_date = ?,
             warning_flag = ?, warning_reason = ?, status = ?,
             source_image = ?, price_tag_text_normalized = ?,
-            product_name_source = ?, selected_crop_name = ?, selection_reason = ?
+            product_name_source = ?, selected_crop_name = ?, selection_reason = ?,
+            reference_price_id = ?, reference_price_match_score = ?, reference_price_match_method = ?
         WHERE log_id = ?
     """, (
         merged_data["detected_object"],
@@ -242,6 +265,9 @@ def update_log(log_id: str, data: dict) -> Optional[dict]:
         merged_data["product_name_source"],
         merged_data["selected_crop_name"],
         merged_data["selection_reason"],
+        merged_data["reference_price_id"],
+        merged_data["reference_price_match_score"],
+        merged_data["reference_price_match_method"],
         log_id,
     ))
     conn.commit()

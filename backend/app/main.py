@@ -22,12 +22,26 @@ from app.models import (
     DebuggerAgenticOcrRunRequest,
     DebuggerSampleDoc,
     DebuggerUploadResponse,
+    ReferencePriceCategorySummary,
+    ReferencePriceImportResponse,
+    ReferencePriceListResponse,
+    ReferencePriceResponse,
+    ReferencePriceSuggestion,
     ScanRequest,
     LogResponse,
     StatsResponse,
     UpdateLogRequest,
 )
 from app.mock_data import seed_database
+from app.reference_prices import (
+    count_reference_prices_filtered,
+    get_reference_price_by_id,
+    get_reference_prices,
+    hydrate_reference_price_suggestion,
+    import_reference_prices_from_csv,
+    list_reference_price_categories,
+    suggest_reference_price,
+)
 
 # ─── App Setup ───────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -95,6 +109,17 @@ if os.path.isdir(templates_dir):
 @app.on_event("startup")
 def startup():
     init_db()
+    if _is_truthy(os.getenv("AUTO_IMPORT_REFERENCE_PRICES"), default=True):
+        import_result = import_reference_prices_from_csv()
+        if import_result["ok"]:
+            print(
+                "✓ Reference prices ready: "
+                f"{import_result['total_rows_in_db']} rows "
+                f"from {Path(import_result['csv_path']).name}"
+            )
+        else:
+            print(f"! Reference price import skipped: {import_result['message']}")
+
     if _is_truthy(os.getenv("SEED_MOCK_DATA"), default=False):
         seeded = seed_database()
         if seeded:
@@ -273,8 +298,16 @@ async def api_get_log(log_id: str):
 async def api_scan(scan: ScanRequest):
     """Receive scan data from AI module, save to database."""
     data = _normalize_scan_payload(scan)
+    _attach_reference_price_match(data)
     log_id = insert_log(data)
-    return {"message": "Đã lưu log thành công", "log_id": log_id}
+    saved = get_log_by_id(log_id)
+    return {
+        "message": "Đã lưu log thành công",
+        "log_id": log_id,
+        "reference_price_suggestion": (
+            _resolve_reference_price_suggestion(saved) if saved else None
+        ),
+    }
 
 
 @app.delete("/api/logs/{log_id}")
@@ -289,7 +322,20 @@ async def api_delete_log(log_id: str):
 @app.put("/api/logs/{log_id}", response_model=LogResponse)
 async def api_update_log(log_id: str, update: UpdateLogRequest):
     """Update a log entry."""
-    updated = update_log(log_id, update.model_dump(exclude_unset=True))
+    payload = update.model_dump(exclude_unset=True)
+    if "detected_object" in payload or "category" in payload:
+        existing = get_log_by_id(log_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Log not found")
+        match_input = {
+            "detected_object": payload.get("detected_object", existing.get("detected_object")),
+            "category": payload.get("category", existing.get("category")),
+        }
+        _attach_reference_price_match(match_input)
+        payload["reference_price_id"] = match_input.get("reference_price_id")
+        payload["reference_price_match_score"] = match_input.get("reference_price_match_score")
+        payload["reference_price_match_method"] = match_input.get("reference_price_match_method")
+    updated = update_log(log_id, payload)
     if not updated:
         raise HTTPException(status_code=404, detail="Log not found")
     return _format_log(updated)
@@ -299,6 +345,60 @@ async def api_update_log(log_id: str, update: UpdateLogRequest):
 async def api_get_stats():
     """Get dashboard statistics as JSON."""
     return get_stats()
+
+
+@app.get("/api/reference-prices", response_model=ReferencePriceListResponse)
+async def api_get_reference_prices(
+    query: str = Query("", description="Search by product name, brand, variant, or size"),
+    category: str = Query("", description="Normalized category filter"),
+    brand: str = Query("", description="Brand filter"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """List normalized retail reference prices imported from CSV."""
+    items = get_reference_prices(
+        query=query,
+        category=category,
+        brand=brand,
+        limit=limit,
+        offset=offset,
+    )
+    total = count_reference_prices_filtered(
+        query=query,
+        category=category,
+        brand=brand,
+    )
+    return ReferencePriceListResponse(
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[ReferencePriceResponse(**item) for item in items],
+    )
+
+
+@app.get(
+    "/api/reference-prices/categories",
+    response_model=list[ReferencePriceCategorySummary],
+)
+async def api_get_reference_price_categories():
+    """List normalized reference-price categories with item counts."""
+    rows = list_reference_price_categories()
+    return [ReferencePriceCategorySummary(**row) for row in rows]
+
+
+@app.get("/api/reference-prices/{price_id}", response_model=ReferencePriceResponse)
+async def api_get_reference_price(price_id: int):
+    """Get one reference-price row by id."""
+    item = get_reference_price_by_id(price_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Reference price not found")
+    return ReferencePriceResponse(**item)
+
+
+@app.post("/api/reference-prices/import", response_model=ReferencePriceImportResponse)
+async def api_import_reference_prices():
+    """Manually re-import the CSV retail price catalog into SQLite."""
+    return ReferencePriceImportResponse(**import_reference_prices_from_csv())
 
 
 @app.get("/api/debugger/sample-docs", response_model=list[DebuggerSampleDoc])
@@ -444,7 +544,38 @@ def _format_log(log: dict) -> dict:
         "selected_crop_name": log.get("selected_crop_name"),
         "selection_reason": log.get("selection_reason"),
         "expiry_date": log.get("expiry_date"),
+        "reference_price_suggestion": _resolve_reference_price_suggestion(log),
     }
+
+
+def _resolve_reference_price_suggestion(log: dict) -> ReferencePriceSuggestion | None:
+    suggestion = hydrate_reference_price_suggestion(
+        log.get("reference_price_id"),
+        match_score=log.get("reference_price_match_score"),
+        match_method=log.get("reference_price_match_method"),
+    )
+    if suggestion is None:
+        suggestion = suggest_reference_price(
+            log.get("detected_object"),
+            category=log.get("category"),
+        )
+    return ReferencePriceSuggestion(**suggestion) if suggestion else None
+
+
+def _attach_reference_price_match(data: dict) -> None:
+    suggestion = suggest_reference_price(
+        data.get("detected_object"),
+        category=data.get("category"),
+    )
+    if suggestion is None:
+        data["reference_price_id"] = None
+        data["reference_price_match_score"] = None
+        data["reference_price_match_method"] = None
+        return
+
+    data["reference_price_id"] = suggestion["reference_price_id"]
+    data["reference_price_match_score"] = suggestion["match_score"]
+    data["reference_price_match_method"] = suggestion["match_method"]
 
 
 def _is_truthy(value: str | None, default: bool = False) -> bool:

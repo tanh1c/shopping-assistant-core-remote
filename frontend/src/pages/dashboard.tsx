@@ -599,6 +599,51 @@ export default function DashboardPage() {
                                     </p>
                                 </div>
                             )}
+                            {selected.reference_price_suggestion && (
+                                <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30 p-3 space-y-2">
+                                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                                        Giá tham chiếu gợi ý từ catalog
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-3 text-xs">
+                                        <div>
+                                            <p className="text-muted-foreground">Sản phẩm khớp</p>
+                                            <p className="font-medium">
+                                                {selected.reference_price_suggestion.product_name}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-muted-foreground">Giá trung bình</p>
+                                            <p className="font-mono">
+                                                {selected.reference_price_suggestion.price_avg_vnd
+                                                    ? `${selected.reference_price_suggestion.price_avg_vnd.toLocaleString("vi-VN")} VND`
+                                                    : "N/A"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-muted-foreground">Khoảng giá</p>
+                                            <p className="font-mono">
+                                                {selected.reference_price_suggestion.price_min_vnd && selected.reference_price_suggestion.price_max_vnd
+                                                    ? `${selected.reference_price_suggestion.price_min_vnd.toLocaleString("vi-VN")} - ${selected.reference_price_suggestion.price_max_vnd.toLocaleString("vi-VN")} VND`
+                                                    : "N/A"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-muted-foreground">Độ khớp</p>
+                                            <p className="font-mono">
+                                                {Math.round(selected.reference_price_suggestion.match_score * 100)}%
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {(selected.reference_price_suggestion.source_1_name || selected.reference_price_suggestion.checked_at) && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {selected.reference_price_suggestion.source_1_name || "Nguồn catalog"}
+                                            {selected.reference_price_suggestion.checked_at
+                                                ? ` • check ${selected.reference_price_suggestion.checked_at}`
+                                                : ""}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                             {(selected.product_name_source || selected.selected_crop_name) && (
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>

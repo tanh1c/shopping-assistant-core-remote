@@ -46,10 +46,14 @@ class PriceTagPipeline:
             result = dict(result)
             result.pop("expiration_date", None)
             result.setdefault("raw_ocr_text", raw_text)
-            print("\n" + "=" * 50)
-            print("EXTRACTION RESULT:")
-            print(json.dumps(result, indent=4, ensure_ascii=False))
-            print("=" * 50)
+            logger.info(
+                "Extraction result | file=%s | name=%s | price=%s | category=%s",
+                file_path.name,
+                result.get("name"),
+                result.get("price"),
+                result.get("category"),
+            )
+            logger.debug("Extraction payload: %s", json.dumps(result, ensure_ascii=False))
         else:
             logger.error("LLM extraction failed.")
 

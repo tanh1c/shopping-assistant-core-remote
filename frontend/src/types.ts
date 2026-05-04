@@ -16,6 +16,28 @@ export interface LogEntry {
     selection_reason?: string | null
     expiry_date?: string | null
     warning_reason?: string | null
+    reference_price_suggestion?: ReferencePriceSuggestion | null
+}
+
+export interface ReferencePriceSuggestion {
+    reference_price_id: number
+    match_score: number
+    match_method: string
+    product_name: string
+    brand?: string | null
+    variant?: string | null
+    size_or_volume?: string | null
+    category?: string | null
+    raw_category?: string | null
+    currency: string
+    price_min_vnd?: number | null
+    price_max_vnd?: number | null
+    price_avg_vnd?: number | null
+    confidence?: string | null
+    checked_at?: string | null
+    notes?: string | null
+    source_1_name?: string | null
+    source_1_url?: string | null
 }
 
 export interface Stats {

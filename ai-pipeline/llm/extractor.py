@@ -27,15 +27,15 @@ class LLMExtractor:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        provider: str = "alibaba",
+        provider: str = "openai",
         model: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
     ):
         self.provider = provider.lower()
-        self.api_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("ALIBABA_API_KEY")
-        self.model = model or os.getenv("LLM_MODEL")
-        self.base_url = base_url or os.getenv("LLM_BASE_URL")
+        self.api_key = api_key or self._resolve_api_key(self.provider)
+        self.model = model or os.getenv("LLM_MODEL") or self._default_model(self.provider)
+        self.base_url = (base_url or os.getenv("LLM_BASE_URL") or self._default_base_url(self.provider)).rstrip("/")
         self.timeout_seconds = timeout_seconds or int(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
 
         if self.provider == "gemini":
@@ -44,11 +44,34 @@ class LLMExtractor:
         elif self.provider == "ollama":
             self.model = self.model or "llama3.2"
             self._init_ollama()
+        elif self.provider == "openai":
+            self.model = self.model or self._default_model("openai")
         elif self.provider in {"alibaba", "dashscope"}:
-            self.model = self.model or "qwen3.5-plus"
-            self.base_url = (self.base_url or "https://coding-intl.dashscope.aliyuncs.com/v1").rstrip("/")
+            self.model = self.model or self._default_model("alibaba")
+            self.base_url = (self.base_url or self._default_base_url("alibaba")).rstrip("/")
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
+
+    def _resolve_api_key(self, provider: str) -> Optional[str]:
+        if provider == "openai":
+            return os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY")
+        if provider in {"alibaba", "dashscope"}:
+            return os.getenv("LLM_API_KEY") or os.getenv("ALIBABA_API_KEY")
+        return os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("ALIBABA_API_KEY")
+
+    def _default_model(self, provider: str) -> str:
+        if provider == "openai":
+            return "gpt-5.4-mini"
+        if provider in {"alibaba", "dashscope"}:
+            return "qwen3.5-plus"
+        return ""
+
+    def _default_base_url(self, provider: str) -> str:
+        if provider == "openai":
+            return "https://api.openai.com/v1"
+        if provider in {"alibaba", "dashscope"}:
+            return "https://coding-intl.dashscope.aliyuncs.com/v1"
+        return ""
 
     def _init_gemini(self):
         """Khởi tạo Google Gemini client"""
@@ -86,6 +109,13 @@ class LLMExtractor:
             return self._extract_gemini(ocr_text, detected_object)
         if self.provider == "ollama":
             return self._extract_ollama(ocr_text, detected_object)
+        if self.provider == "openai":
+            return self._extract_openai(
+                ocr_text=ocr_text,
+                detected_object=detected_object,
+                image_base64=image_base64,
+                image_mime_type=image_mime_type,
+            )
         if self.provider in {"alibaba", "dashscope"}:
             return self._extract_alibaba(
                 ocr_text=ocr_text,
@@ -171,10 +201,42 @@ class LLMExtractor:
         image_base64: Optional[str] = None,
         image_mime_type: str = "image/png",
     ) -> ExtractedInfo:
+        return self._extract_chat_completion(
+            provider_label="Alibaba",
+            ocr_text=ocr_text,
+            detected_object=detected_object,
+            image_base64=image_base64,
+            image_mime_type=image_mime_type,
+        )
+
+    def _extract_openai(
+        self,
+        ocr_text: str,
+        detected_object: str,
+        image_base64: Optional[str] = None,
+        image_mime_type: str = "image/png",
+    ) -> ExtractedInfo:
+        return self._extract_chat_completion(
+            provider_label="OpenAI",
+            ocr_text=ocr_text,
+            detected_object=detected_object,
+            image_base64=image_base64,
+            image_mime_type=image_mime_type,
+        )
+
+    def _extract_chat_completion(
+        self,
+        *,
+        provider_label: str,
+        ocr_text: str,
+        detected_object: str,
+        image_base64: Optional[str],
+        image_mime_type: str,
+    ) -> ExtractedInfo:
         prompt = self._build_prompt(ocr_text, detected_object)
 
         if not self.api_key:
-            print("Alibaba provider requires LLM_API_KEY or ALIBABA_API_KEY")
+            print(f"{provider_label} provider requires a configured API key")
             return self._mock_extract(ocr_text, detected_object)
 
         user_content = [{"type": "text", "text": prompt}]
@@ -188,27 +250,29 @@ class LLMExtractor:
                 }
             )
 
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a precise retail product extraction assistant. Output JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": user_content,
+                },
+            ],
+            "temperature": 0.0,
+            "response_format": {"type": "json_object"},
+        }
+
         response = requests.post(
             f"{self.base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": self.model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a precise retail product extraction assistant. Output JSON only.",
-                    },
-                    {
-                        "role": "user",
-                        "content": user_content,
-                    },
-                ],
-                "temperature": 0.0,
-                "response_format": {"type": "json_object"},
-            },
+            json=payload,
             timeout=self.timeout_seconds,
         )
         response.raise_for_status()
@@ -219,7 +283,7 @@ class LLMExtractor:
             data = self._normalize_payload(json.loads(self._extract_json_text(content)))
             return ExtractedInfo(**data)
         except Exception as e:
-            print(f"Error parsing Alibaba response: {e}")
+            print(f"Error parsing {provider_label} response: {e}")
             return self._mock_extract(ocr_text, detected_object)
 
     def select_best_candidate(
@@ -228,6 +292,12 @@ class LLMExtractor:
         candidates: List[Dict],
         scene_image_mime_type: str = "image/png",
     ) -> Optional[Dict]:
+        if self.provider == "openai" and scene_image_base64:
+            return self._select_best_candidate_openai(
+                scene_image_base64=scene_image_base64,
+                candidates=candidates,
+                scene_image_mime_type=scene_image_mime_type,
+            )
         if self.provider in {"alibaba", "dashscope"} and scene_image_base64:
             return self._select_best_candidate_alibaba(
                 scene_image_base64=scene_image_base64,
@@ -236,11 +306,39 @@ class LLMExtractor:
             )
         return self._select_best_candidate_fallback(candidates)
 
+    def _select_best_candidate_openai(
+        self,
+        scene_image_base64: str,
+        candidates: List[Dict],
+        scene_image_mime_type: str = "image/png",
+    ) -> Optional[Dict]:
+        return self._select_best_candidate_chat_completion(
+            provider_label="OpenAI",
+            scene_image_base64=scene_image_base64,
+            candidates=candidates,
+            scene_image_mime_type=scene_image_mime_type,
+        )
+
     def _select_best_candidate_alibaba(
         self,
         scene_image_base64: str,
         candidates: List[Dict],
         scene_image_mime_type: str = "image/png",
+    ) -> Optional[Dict]:
+        return self._select_best_candidate_chat_completion(
+            provider_label="Alibaba",
+            scene_image_base64=scene_image_base64,
+            candidates=candidates,
+            scene_image_mime_type=scene_image_mime_type,
+        )
+
+    def _select_best_candidate_chat_completion(
+        self,
+        *,
+        provider_label: str,
+        scene_image_base64: str,
+        candidates: List[Dict],
+        scene_image_mime_type: str,
     ) -> Optional[Dict]:
         if not self.api_key:
             return self._select_best_candidate_fallback(candidates)
@@ -328,10 +426,14 @@ class LLMExtractor:
         response.raise_for_status()
 
         content = response.json()["choices"][0]["message"]["content"]
-        return self._normalize_payload(
-            json.loads(self._extract_json_text(content)),
-            selection_mode=True,
-        )
+        try:
+            return self._normalize_payload(
+                json.loads(self._extract_json_text(content)),
+                selection_mode=True,
+            )
+        except Exception as exc:
+            print(f"Error parsing {provider_label} selection response: {exc}")
+            return self._select_best_candidate_fallback(candidates)
 
     def _build_selection_prompt(self, candidates: List[Dict]) -> str:
         return f"""
@@ -612,7 +714,7 @@ class LLMExtractor:
 
 # Demo usage
 if __name__ == '__main__':
-    extractor = LLMExtractor(provider=os.getenv("LLM_PROVIDER", "alibaba"))
+    extractor = LLMExtractor(provider=os.getenv("LLM_PROVIDER", "openai"))
 
     test_ocr = "Sữa tươi Vinamilk 180ml\n15,000đ\nHSD: 20/12/2026"
     result = extractor.extract(test_ocr, "sữa")

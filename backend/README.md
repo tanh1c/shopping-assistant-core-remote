@@ -16,7 +16,7 @@ pip install -r requirements.txt
 # Khởi động server (sẽ tự động tạo mock data nếu database rỗng)
 python -m app.main
 ```
-Backend sẽ chạy tại: **http://localhost:3000** (API docs: `http://localhost:3000/api/docs`)
+Backend sẽ chạy tại: **http://localhost:8000** (API docs: `http://localhost:8000/api/docs`)
 
 
 **2. Chạy Frontend (React/Vite)**
@@ -42,6 +42,9 @@ Toàn bộ dữ liệu giao tiếp thông qua JSON API (không còn trả về c
 | `POST /api/scan` | Nhận dữ liệu từ AI/CV module |
 | `GET /api/logs` | Lấy danh sách logs (JSON) |
 | `GET /api/stats` | Thống kê tổng quan (JSON) |
+| `GET /api/reference-prices` | Tra cứu bảng giá tham chiếu đã import từ CSV |
+| `GET /api/reference-prices/categories` | Xem số lượng bản ghi theo category chuẩn hóa |
+| `POST /api/reference-prices/import` | Re-import dataset giá từ file CSV |
 | `DELETE /api/logs/{log_id}` | Xóa một log cụ thể |
 
 ## Ghép nối với AI Module

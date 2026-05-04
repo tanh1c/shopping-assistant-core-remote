@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -28,9 +29,9 @@ class OCRLLMExtractor(BaseLLMExtractor):
         timeout_seconds: Optional[int] = None,
     ):
         self._provider = (provider or settings.LLM_PROVIDER).lower()
-        self._model = model or settings.LLM_MODEL
-        self._api_key = api_key or settings.LLM_API_KEY
-        self._base_url = (base_url or settings.LLM_BASE_URL).rstrip("/")
+        self._model = model or settings.LLM_MODEL or self._default_model(self._provider)
+        self._api_key = api_key or self._resolve_api_key(self._provider)
+        self._base_url = (base_url or settings.LLM_BASE_URL or self._default_base_url(self._provider)).rstrip("/")
         self._timeout_seconds = timeout_seconds or settings.LLM_TIMEOUT_SECONDS
         self._ollama_client = None
 
@@ -43,11 +44,36 @@ class OCRLLMExtractor(BaseLLMExtractor):
                 ) from exc
 
             self._ollama_client = AsyncClient(host=settings.OLLAMA_HOST)
+        elif self._provider == "openai":
+            self._model = self._model or self._default_model("openai")
         elif self._provider in {"alibaba", "dashscope"}:
+            self._model = self._model or self._default_model("alibaba")
+            self._base_url = (self._base_url or self._default_base_url("alibaba")).rstrip("/")
             if not self._api_key:
                 logger.warning("Alibaba provider selected but no API key was configured.")
         else:
             raise ValueError(f"Unsupported OCR LLM provider: {self._provider}")
+
+    def _resolve_api_key(self, provider: str) -> Optional[str]:
+        if provider == "openai":
+            return os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY")
+        if provider in {"alibaba", "dashscope"}:
+            return settings.LLM_API_KEY or os.getenv("ALIBABA_API_KEY")
+        return settings.LLM_API_KEY or os.getenv("OPENAI_API_KEY") or os.getenv("ALIBABA_API_KEY")
+
+    def _default_model(self, provider: str) -> str:
+        if provider == "openai":
+            return "gpt-5.4-mini"
+        if provider in {"alibaba", "dashscope"}:
+            return "qwen3.5-plus"
+        return ""
+
+    def _default_base_url(self, provider: str) -> str:
+        if provider == "openai":
+            return "https://api.openai.com/v1"
+        if provider in {"alibaba", "dashscope"}:
+            return "https://coding-intl.dashscope.aliyuncs.com/v1"
+        return ""
 
     async def extract_info(self, raw_text: str, image_path: Optional[Path] = None) -> Optional[Dict]:
         """
@@ -59,6 +85,8 @@ class OCRLLMExtractor(BaseLLMExtractor):
         """
         if self._provider == "ollama":
             return await self._extract_ollama(raw_text)
+        if self._provider == "openai":
+            return await asyncio.to_thread(self._extract_openai, raw_text, image_path)
         if self._provider in {"alibaba", "dashscope"}:
             return await asyncio.to_thread(self._extract_alibaba, raw_text, image_path)
         raise ValueError(f"Unsupported OCR LLM provider: {self._provider}")
@@ -118,8 +146,28 @@ OCR TEXT:
             return None
 
     def _extract_alibaba(self, raw_text: str, image_path: Optional[Path] = None) -> Optional[Dict]:
+        return self._extract_chat_completion(
+            provider_label="Alibaba",
+            raw_text=raw_text,
+            image_path=image_path,
+        )
+
+    def _extract_openai(self, raw_text: str, image_path: Optional[Path] = None) -> Optional[Dict]:
+        return self._extract_chat_completion(
+            provider_label="OpenAI",
+            raw_text=raw_text,
+            image_path=image_path,
+        )
+
+    def _extract_chat_completion(
+        self,
+        *,
+        provider_label: str,
+        raw_text: str,
+        image_path: Optional[Path] = None,
+    ) -> Optional[Dict]:
         if not self._api_key:
-            logger.error("Missing API key for Alibaba DashScope provider.")
+            logger.error("Missing API key for %s provider.", provider_label)
             return None
 
         prompt = self._build_prompt(raw_text)
@@ -155,7 +203,8 @@ OCR TEXT:
 
         try:
             logger.info(
-                "Requesting extraction from Alibaba provider | model=%s | image=%s",
+                "Requesting extraction from %s provider | model=%s | image=%s",
+                provider_label,
                 self._model,
                 bool(image_path and image_path.exists()),
             )
@@ -175,15 +224,37 @@ OCR TEXT:
             logger.info(f"Extraction result: {result}")
             return result
         except Exception as exc:
-            logger.error(f"Alibaba extraction failed: {exc}")
+            logger.error("%s extraction failed: %s", provider_label, exc)
             return None
 
     async def select_best_candidate(self, scene_image_path: Path, candidates: List[Dict]) -> Optional[Dict]:
+        if self._provider == "openai":
+            return await asyncio.to_thread(self._select_best_candidate_openai, scene_image_path, candidates)
         if self._provider in {"alibaba", "dashscope"}:
             return await asyncio.to_thread(self._select_best_candidate_alibaba, scene_image_path, candidates)
         return self._select_best_candidate_fallback(candidates)
 
+    def _select_best_candidate_openai(self, scene_image_path: Path, candidates: List[Dict]) -> Optional[Dict]:
+        return self._select_best_candidate_chat_completion(
+            provider_label="OpenAI",
+            scene_image_path=scene_image_path,
+            candidates=candidates,
+        )
+
     def _select_best_candidate_alibaba(self, scene_image_path: Path, candidates: List[Dict]) -> Optional[Dict]:
+        return self._select_best_candidate_chat_completion(
+            provider_label="Alibaba",
+            scene_image_path=scene_image_path,
+            candidates=candidates,
+        )
+
+    def _select_best_candidate_chat_completion(
+        self,
+        *,
+        provider_label: str,
+        scene_image_path: Path,
+        candidates: List[Dict],
+    ) -> Optional[Dict]:
         if not self._api_key:
             return self._select_best_candidate_fallback(candidates)
 
@@ -248,7 +319,8 @@ OCR TEXT:
 
         try:
             logger.info(
-                "Selecting best candidate | scene=%s | candidates=%s",
+                "Selecting best candidate via %s | scene=%s | candidates=%s",
+                provider_label,
                 scene_image_path.name,
                 len(ranked_candidates),
             )
@@ -271,7 +343,7 @@ OCR TEXT:
             logger.info(f"Selection result: {selection}")
             return selection
         except Exception as exc:
-            logger.error(f"Alibaba candidate selection failed: {exc}")
+            logger.error("%s candidate selection failed: %s", provider_label, exc)
             return self._select_best_candidate_fallback(candidates)
 
     def _build_selection_prompt(self, scene_image_path: Path, candidates: List[Dict]) -> str:
