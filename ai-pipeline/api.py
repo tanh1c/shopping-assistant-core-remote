@@ -1,3 +1,4 @@
+import base64
 import logging
 import os
 import re
@@ -52,6 +53,10 @@ class InferSuccessResponse(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0, description="Độ tin cậy của kết quả cuối.")
     raw_text: Optional[str] = Field(default=None, description="OCR text thô của candidate được chọn.")
     audio_path: Optional[str] = Field(default=None, description="Đường dẫn audio nếu bật TTS.")
+    audio_filename: Optional[str] = Field(default=None, description="Tên file audio để client lưu/phát.")
+    audio_mime_type: Optional[str] = Field(default=None, description="MIME type của audio trả về.")
+    audio_base64: Optional[str] = Field(default=None, description="Audio base64 để Raspberry Pi có thể phát trực tiếp.")
+    audio_download_url: Optional[str] = Field(default=None, description="URL tải audio từ inference service.")
     debug: InferDebugPayload
 
 
@@ -118,6 +123,7 @@ def _build_success_response(result: dict) -> InferSuccessResponse:
     confidence = selected.get("selection_confidence")
     if confidence is None:
         confidence = 0.0
+    audio_payload = _build_audio_payload(result.get("audio_path"))
 
     return InferSuccessResponse(
         ok=True,
@@ -130,6 +136,10 @@ def _build_success_response(result: dict) -> InferSuccessResponse:
         confidence=float(confidence),
         raw_text=selected.get("raw_ocr_text"),
         audio_path=result.get("audio_path"),
+        audio_filename=audio_payload.get("audio_filename"),
+        audio_mime_type=audio_payload.get("audio_mime_type"),
+        audio_base64=audio_payload.get("audio_base64"),
+        audio_download_url=audio_payload.get("audio_download_url"),
         debug=debug,
     )
 
@@ -149,6 +159,59 @@ def _debug_upload_dir() -> Path:
     if configured:
         return Path(configured)
     return Path(__file__).resolve().parent / "debug_uploads"
+
+
+def _audio_dir() -> Path:
+    configured = os.getenv("AGENTIC_AUDIO_DIR")
+    if configured:
+        return Path(configured)
+    return Path(__file__).resolve().parent / "audio"
+
+
+def _audio_mime_type(audio_path: Path) -> str:
+    suffix = audio_path.suffix.lower()
+    if suffix == ".wav":
+        return "audio/wav"
+    if suffix == ".mp3":
+        return "audio/mpeg"
+    if suffix == ".ogg":
+        return "audio/ogg"
+    return "application/octet-stream"
+
+
+def _build_audio_payload(audio_path_value: Optional[str]) -> dict:
+    if not audio_path_value:
+        return {}
+
+    audio_path = Path(audio_path_value)
+    if not audio_path.exists() or not audio_path.is_file():
+        logger.warning("Audio path returned by inference does not exist: %s", audio_path)
+        return {}
+
+    try:
+        audio_bytes = audio_path.read_bytes()
+    except OSError as exc:
+        logger.warning("Failed to read generated audio %s: %s", audio_path, exc)
+        return {}
+
+    return {
+        "audio_filename": audio_path.name,
+        "audio_mime_type": _audio_mime_type(audio_path),
+        "audio_base64": base64.b64encode(audio_bytes).decode("utf-8"),
+        "audio_download_url": f"/audio/{audio_path.name}",
+    }
+
+
+def _resolve_audio_file(filename: str) -> Path:
+    safe_name = Path(filename).name
+    if safe_name != filename:
+        raise FileNotFoundError("Invalid audio filename")
+
+    candidate = _audio_dir() / safe_name
+    if not candidate.exists() or not candidate.is_file():
+        raise FileNotFoundError("Audio file not found")
+
+    return candidate
 
 
 def _debug_upload_enabled() -> bool:
@@ -260,6 +323,19 @@ async def list_debug_uploads():
     }
 
 
+@app.get("/audio/{filename}")
+async def get_audio_file(filename: str):
+    try:
+        audio_path = _resolve_audio_file(filename)
+    except FileNotFoundError:
+        return JSONResponse(
+            status_code=404,
+            content={"ok": False, "message": "Audio file not found."},
+        )
+
+    return FileResponse(audio_path, media_type=_audio_mime_type(audio_path), filename=audio_path.name)
+
+
 @app.get("/debug/uploads/latest")
 async def get_latest_debug_upload():
     latest = _latest_debug_upload()
@@ -342,6 +418,10 @@ async def infer_image(
     use_yolo: bool = Query(True, description="Bật YOLO crop trước khi OCR."),
     enable_selection: bool = Query(True, description="Bật bước chọn candidate tốt nhất."),
     enable_tts: bool = Query(False, description="Bật tạo file audio trả về đường dẫn audio_path."),
+    enable_backend_sync: bool = Query(
+        True,
+        description="Tự động sync kết quả infer sang backend /api/scan để dashboard thấy log mới.",
+    ),
 ):
     suffix = _resolve_upload_suffix(file)
     if suffix is None:
@@ -389,7 +469,7 @@ async def infer_image(
                     use_yolo=use_yolo,
                     enable_selection=enable_selection,
                     enable_tts=enable_tts,
-                    enable_backend_sync=False,
+                    enable_backend_sync=enable_backend_sync,
                 ),
                 source_image=safe_filename,
             )
@@ -415,4 +495,9 @@ async def infer_image(
 
 
 if __name__ == "__main__":
-    uvicorn.run("api:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run(
+        "api:app",
+        host=os.getenv("AI_PIPELINE_HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", os.getenv("AI_PIPELINE_PORT", "8001"))),
+        reload=_is_truthy(os.getenv("AI_PIPELINE_RELOAD"), default=False),
+    )

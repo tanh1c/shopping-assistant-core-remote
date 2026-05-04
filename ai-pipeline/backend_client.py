@@ -22,6 +22,10 @@ def build_scan_api_url() -> str:
     if explicit_url:
         return explicit_url.rstrip("/")
 
+    internal_hostport = os.getenv("BACKEND_HOSTPORT")
+    if internal_hostport:
+        return f"http://{internal_hostport.rstrip('/')}/api/scan"
+
     backend_url = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
     return f"{backend_url}/api/scan"
 

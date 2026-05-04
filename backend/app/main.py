@@ -878,4 +878,9 @@ def _normalize_scan_payload(scan: ScanRequest) -> dict:
 # ─── Run ─────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run(
+        "app.main:app",
+        host=os.getenv("BACKEND_HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", os.getenv("BACKEND_PORT", "8000"))),
+        reload=_is_truthy(os.getenv("BACKEND_RELOAD"), default=False),
+    )

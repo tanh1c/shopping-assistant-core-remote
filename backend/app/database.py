@@ -3,9 +3,8 @@
 import os
 import sqlite3
 from datetime import date, datetime
+from pathlib import Path
 from typing import Optional
-
-DB_PATH = os.path.join(os.path.dirname(__file__), "shopping.db")
 
 REQUIRED_COLUMNS = {
     "source_image": "TEXT",
@@ -19,9 +18,29 @@ REQUIRED_COLUMNS = {
 }
 
 
+def _default_db_path() -> Path:
+    return Path(__file__).resolve().parent / "shopping.db"
+
+
+def resolve_db_path() -> Path:
+    explicit_path = os.getenv("SHOPPING_DB_PATH")
+    if explicit_path:
+        return Path(explicit_path).expanduser()
+
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url.startswith("sqlite:///"):
+        sqlite_path = database_url.removeprefix("sqlite:///")
+        if sqlite_path:
+            return Path(sqlite_path).expanduser()
+
+    return _default_db_path()
+
+
 def get_connection() -> sqlite3.Connection:
     """Get SQLite connection with Row factory."""
-    conn = sqlite3.connect(DB_PATH)
+    db_path = resolve_db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     return conn
 

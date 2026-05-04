@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/app/ ./app/
+COPY backend/models/ ./models/
+COPY vn_retail_prices_140_confirmed_20_each_category_2026-05-03.csv ./data/reference_prices.csv
+
+ENV PYTHONUNBUFFERED=1
+ENV SHOPPING_DB_PATH=/var/data/shopping.db
+ENV REFERENCE_PRICE_CSV_PATH=/app/data/reference_prices.csv
+
+EXPOSE 8000
+
+CMD ["python", "-m", "app.main"]

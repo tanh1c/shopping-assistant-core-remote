@@ -197,3 +197,36 @@ python run_live_webcam.py
 ```
 
 Hoặc tắt app đang chiếm webcam rồi chạy lại script.
+
+## 9. Chạy Raspberry Pi Gateway Với TTS Trả Về
+
+Script mẫu cho Pi nằm ở [shared/pi/pi_gateway.py](./shared/pi/pi_gateway.py).
+
+Script này:
+- gọi ESP32-CAM lấy ảnh
+- gửi ảnh lên `POST /infer`
+- nhận JSON kết quả
+- nếu có `audio_base64` thì lưu và phát ngay trên Pi
+- nếu không có `audio_base64` nhưng có `audio_download_url` thì tải file audio rồi phát
+
+Ví dụ chạy trên Raspberry Pi:
+
+```bash
+cd ~/projects/shopping-assistant-core
+python -m venv venv
+source venv/bin/activate
+pip install requests
+
+export ESP32_SNAPSHOT_URL="http://192.168.1.18/snapshot"
+export SERVER_INFER_URL="http://192.168.1.20:8001/infer"
+export ENABLE_TTS="true"
+
+python shared/pi/pi_gateway.py
+```
+
+Nếu Pi chưa có trình phát âm thanh:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y alsa-utils mpg123 ffmpeg vlc
+```

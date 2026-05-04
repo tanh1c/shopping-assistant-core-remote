@@ -75,8 +75,18 @@ def resolve_reference_price_csv_path() -> Path:
     configured = os.getenv("REFERENCE_PRICE_CSV_PATH")
     if configured:
         return Path(configured)
-    repo_root = Path(__file__).resolve().parents[2]
-    return repo_root / DEFAULT_REFERENCE_PRICE_CSV
+
+    search_roots = [
+        Path.cwd(),
+        Path(__file__).resolve().parents[1],
+        Path(__file__).resolve().parents[2],
+    ]
+    for root in search_roots:
+        candidate = root / DEFAULT_REFERENCE_PRICE_CSV
+        if candidate.exists():
+            return candidate
+
+    return search_roots[0] / DEFAULT_REFERENCE_PRICE_CSV
 
 
 def ensure_reference_prices_table() -> None:
