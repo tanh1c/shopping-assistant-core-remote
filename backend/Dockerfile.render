@@ -15,7 +15,6 @@ COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app/ ./app/
-COPY backend/models/ ./models/
 COPY vn_retail_prices_140_confirmed_20_each_category_2026-05-03.csv ./data/reference_prices.csv
 
 ENV PYTHONUNBUFFERED=1
