@@ -52,7 +52,6 @@ services:
   - name: shopping-assistant-frontend
     type: web
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: frontend/dist
