@@ -2,18 +2,14 @@ services:
   - name: shopping-assistant-backend
     type: web
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     dockerfilePath: backend/Dockerfile.render
     dockerContext: .
     healthCheckPath: /health
-    disk:
-      name: shopping-backend-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: SHOPPING_DB_PATH
-        value: /var/data/shopping.db
+        value: /tmp/shopping.db
       - key: AUTO_IMPORT_REFERENCE_PRICES
         value: "true"
       - key: REFERENCE_PRICE_CSV_PATH
@@ -26,7 +22,7 @@ services:
   - name: shopping-assistant-ai-pipeline
     type: web
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     dockerfilePath: ai-pipeline/Dockerfile.render
     dockerContext: .
@@ -34,11 +30,10 @@ services:
     envVars:
       - key: ENABLE_BACKEND_SYNC
         value: "true"
-      - key: BACKEND_HOSTPORT
-        fromService:
-          name: shopping-assistant-backend
-          type: web
-          property: hostport
+      - key: BACKEND_URL
+        value: https://shopping-assistant-backend.onrender.com
+      - key: BACKEND_SCAN_API_URL
+        value: https://shopping-assistant-backend.onrender.com/api/scan
       - key: OPENAI_API_KEY
         sync: false
       - key: LLM_PROVIDER
@@ -57,6 +52,7 @@ services:
   - name: shopping-assistant-frontend
     type: web
     runtime: static
+    plan: free
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: frontend/dist

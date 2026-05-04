@@ -6,6 +6,8 @@ This repo is prepared for a 3-service Render deployment:
 - `shopping-assistant-backend`: Docker Web Service
 - `shopping-assistant-ai-pipeline`: Docker Web Service
 
+The current [render.yaml](./render.yaml) is tuned for the Render free tier.
+
 ## Files
 
 - Blueprint: [render.yaml](./render.yaml)
@@ -21,11 +23,12 @@ This repo is prepared for a 3-service Render deployment:
 
 ## Important notes
 
-- The backend uses a persistent disk mounted at `/var/data`.
-- The backend stores SQLite at `/var/data/shopping.db`.
+- The backend stores SQLite at `/tmp/shopping.db` on free tier.
+- This means backend data is ephemeral and can be lost whenever the free service restarts or spins down.
 - The reference-price CSV is baked into the backend image at `/app/data/reference_prices.csv`.
-- The AI pipeline syncs to the backend over Render private networking via `BACKEND_HOSTPORT`.
+- The AI pipeline syncs to the backend over the backend's public Render URL.
 - The AI pipeline must stay a public web service so Raspberry Pi can call `POST /infer`.
+- Free web services spin down after idle time, so the first request after idle can be slow.
 
 ## Frontend API URL
 
